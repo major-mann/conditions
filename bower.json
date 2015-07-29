@@ -4,17 +4,16 @@
   "authors": [
     "Calvin Mann <calvinmann@gmail.com>"
   ],
-  "description": "A configuration format and parser for use in javascript.",
+  "description": "A javascript configuration engine",
+  "keywords": ["configuration", "config", "condition", "conditions"],
   "main": "dist/conditions.js",
+  "bugs": "https://github.com/major-mann/conditions/issues",
   "moduleType": [
     "amd",
     "globals",
     "node"
   ],
-  "keywords": [
-    "configuration",
-    "config"
-  ],
+  "keywords": ["configuration", "config", "condition", "conditions"],
   "license": "GPL-3.0",
   "ignore": [
     "**/.*",

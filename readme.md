@@ -1,6 +1,5 @@
 #Conditions
-##Quick note
-This is not yet published on NPM or bower, I am planning on doing so soon.
+Quick note: This is not yet published on NPM or bower, I am planning on doing so soon.
 
 Conditions aims to be a fully fledged configuration manager for javascript.
 

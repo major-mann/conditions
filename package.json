@@ -2,11 +2,13 @@
   "name": "conditions",
   "version": "0.0.1",
   "description": "A javascript configuration engine",
+  "keywords": ["configuration", "config", "condition", "conditions"],
   "main": "src/parser.js",
+  "bugs": "https://github.com/major-mann/conditions/issues",
   "scripts": {
     "test": "(grunt test || echo Grunt not found, skipping lint check) && (node node_modules/istanbul/lib/cli.js cover node_modules/jasmine/bin/jasmine.js)"
   },
-  "author": "Calvin Mann",
+  "author": "Calvin Mann <calvinmann@gmail.com>",
   "license": "GPL-3.0",
   "dependencies": {
     "escodegen": "^1.6.1",
@@ -21,5 +23,9 @@
     "grunt-shell": "^1.1.2",
     "istanbul": "^0.3.17",
     "jasmine": "^2.3.1"
+  },
+  "repository" : { 
+    "type" : "git", 
+    "url" : "https://github.com/major-mann/conditions.git"
   }
 }
