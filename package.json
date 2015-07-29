@@ -1,14 +1,15 @@
 {
-  "name": "configurator",
+  "name": "conditions",
   "version": "0.0.1",
   "description": "A javascript configuration engine",
   "main": "src/parser.js",
   "scripts": {
-    "test": "node node_modules/istanbul/lib/cli.js cover node_modules/jasmine/bin/jasmine.js"
+    "test": "(grunt test || echo Grunt not found, skipping lint check) && (node node_modules/istanbul/lib/cli.js cover node_modules/jasmine/bin/jasmine.js)"
   },
   "author": "Calvin Mann",
   "license": "GPL-3.0",
   "dependencies": {
+    "escodegen": "^1.6.1",
     "esprima": "^2.4.1"
   },
   "devDependencies": {

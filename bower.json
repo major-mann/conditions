@@ -1,0 +1,27 @@
+{
+  "name": "conditions",
+  "version": "0.0.1",
+  "authors": [
+    "Calvin Mann <calvinmann@gmail.com>"
+  ],
+  "description": "A configuration format and parser for use in javascript.",
+  "main": "dist/conditions.js",
+  "moduleType": [
+    "amd",
+    "globals",
+    "node"
+  ],
+  "keywords": [
+    "configuration",
+    "config"
+  ],
+  "license": "GPL-3.0",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "coverage",
+    "spec",
+    ".istanbul.yml"
+  ]
+}

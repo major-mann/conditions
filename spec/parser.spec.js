@@ -97,18 +97,14 @@ describe('configuration parser', function () {
         it('should allow expressions to reference object by their id', function () {
             expect(val.sub.exp4).toBe(30);
         });
-        it('should only allow ids from parents and self to be referenced', function () {
-            expect(getE5).toThrow();
-
-            function getE5() {
-                return val.sub.exp5;
-            }
-        });
         it('should allow configuration values on the current object to be referenced by name', function () {
             expect(val.exp6).toBe(30);
         });
-        it('should use values on the second object passed to the parse function in expressions', function () {
+        it('should allow configuration values on the current object to be through this', function () {
             expect(val.exp7).toBe('foo bar baz');
+        });
+        it('should use values on the second object passed to the parse function in expressions', function () {
+            expect(val.exp8).toBe('foo bar baz');
         });
     });
 

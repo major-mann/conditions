@@ -11,7 +11,7 @@
     } else {
         tmp = { };
         factory(tmp);
-        root.configurator = tmp.configurator;
+        root.conditions = tmp.conditions;
     }
 }(this, function (module) {
 'use strict';

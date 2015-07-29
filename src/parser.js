@@ -23,7 +23,7 @@
     * @throws Error When str is not a string.
     */
     function parse(str, environment) {
-        var code, locals = new LocalStack();
+        var code, locals = { };
 
         //Ensure the data is valid
         if (typeof(str) !== 'string') {
@@ -77,7 +77,15 @@
         * @returns {array} The Array representing the supplied block.
         */
         function parseArray(block) {
-            return block.elements.map(parseBlock);
+            var arr = [];
+            block.elements.forEach(mapVal);
+            return arr;
+
+            /** Calls parseblock with the array as the second arg */
+            function mapVal(block) {
+                var parsed = parseBlock(block, arr);
+                arr.push(parsed);
+            }
         }
 
         /**
@@ -86,11 +94,7 @@
         */
         function parseObject(block) {
             var result = { },
-                props,
-                locs;
-
-            //Push onto the local stack
-            locals.push();
+                props;
 
             //Parse all the properties
             props = block.properties
@@ -99,12 +103,6 @@
 
             //Assign the properties to the object
             props.forEach(assignProp);
-
-            //Flatten locals after assigning the props
-            locs = locals.flatten();
-
-            //We are done with this level of the stack
-            locals.pop();
 
             return result;
 
@@ -115,7 +113,11 @@
                     case 'Property':
                         name = propName(prop.key);
                         if (name === 'id' && prop.value.type === 'Identifier') {
-                            locals.set(prop.value.name, result);
+                            if (locals.hasOwnProperty(prop.value.name)) {
+                                throw new Error(errorMessage('duplicate id "' + prop.value.name + '"', prop));
+                            } else {
+                                locals[prop.value.name] = result;
+                            }
                             return false;
                         } else {
                             return true;
@@ -132,7 +134,7 @@
             function parseProperty(prop) {
                 var name, value;
                 name = propName(prop.key);
-                value = parseBlock(prop.value);
+                value = parseBlock(prop.value, result);
                 return {
                     name: name,
                     value: value
@@ -190,8 +192,8 @@
                     var value;
                     if (result.hasOwnProperty(name)) {
                         value = result[name];
-                    } else if (locs.hasOwnProperty(name)) {
-                        value = locs[name];
+                    } else if (locals.hasOwnProperty(name)) {
+                        value = locals[name];
                     } else if (environment.hasOwnProperty(name)) {
                         value = environment[name];
                     } else {
@@ -209,8 +211,8 @@
         *   and returns a function which executes the expression with the
         *   given context.
         */
-        function parseExpression(oblock) {
-            var body, func, result, block = oblock;
+        function parseExpression(oblock, obj) {
+            var body, func, res, block = oblock;
 
             //Ensure we are not doing something invalid.
             validateBlock(block);
@@ -231,10 +233,10 @@
             func = new Function(['context'], body); // jshint ignore:line
 
             //Build a function which will give us line and column information.
-            result = function (context) {
+            res = function (context) {
                 var val, e;
                 try {
-                    val = func(context);
+                    val = func.call(obj, context);
                 } catch (err) {
                     e = prepareError(err, oblock);
                     throw e;
@@ -242,7 +244,7 @@
                 return val;
             };
 
-            return result;
+            return res;
 
             /**
             * Replaces identifiers that are not in the list of VALID_GLOBALS with a call to
@@ -294,6 +296,7 @@
                         case 'Identifier':
                             block = processIdentifierBlock(block);
                             break;
+                        case 'ThisExpression':
                         case 'Literal':
                             //Nothing to process
                             break;
@@ -377,7 +380,7 @@
         * Parses the supplied block into a value.
         * @param {object} block The block to parse
         */
-        function parseBlock(block) {
+        function parseBlock(block, object) {
             var supported = blockSupported(block);
             if (supported) {
                 switch (block.type) {
@@ -387,16 +390,18 @@
                         return parseArray(block);
                     case 'Literal':
                         return parseLiteral(block);
+
                     case 'ConditionalExpression':
                     case 'BinaryExpression':
                     case 'MemberExpression':
                     case 'UnaryExpression':
                     case 'CallExpression':
+                    case 'ThisExpression':
                     case 'Identifier':
                     case 'Property':
-                        return parseExpression(block);
+                        return parseExpression(block, object);
                     default:
-                        throw new Error('Critical errorInvalid program!');
+                        throw new Error('Critical error. Invalid program!');
                 }
             } else {
                 throw new Error(errorMessage('blocks of type "' + block.type + '" not supported', block));
@@ -413,6 +418,7 @@
                 case 'UnaryExpression':
                 case 'ArrayExpression':
                 case 'CallExpression':
+                case 'ThisExpression':
                 case 'Identifier':
                 case 'Property':
                 case 'Literal':
@@ -442,7 +448,6 @@
                 case 'UpdateExpression':
                 case 'YieldExpression':
                 case 'ArrowExpression':
-                case 'ThisExpression':
                 case 'NewExpression':
                 case 'FunctionDeclaration':
                 case 'VariableDeclaration':
@@ -482,48 +487,6 @@
                 pos = '';
             }
             return msg + pos;
-        }
-
-        /** A stack system for managing local variable ids. */
-        function LocalStack() {
-
-            var stack = [];
-
-            this.set = set;
-            this.pop = pop;
-            this.push = push;
-            this.flatten = flatten;
-
-            /** Sets a value for the current frame */
-            function set(name, val) {
-                var frame = stack[stack.length - 1];
-                if (frame) {
-                    frame[name] = val;
-                }
-            }
-
-            /** Pops the top frame off the stack */
-            function pop() {
-                stack.pop();
-            }
-
-            /** Adds a frame to the stack */
-            function push() {
-                stack.push({});
-            }
-
-            /** Returns an object copying the local values upwards through the stack */
-            function flatten() {
-                var i, j, k, keys, copy = { };
-                for (i = 0; i < stack.length; i++) {
-                    keys = Object.keys(stack[i]);
-                    for (j = 0; j < keys.length; j++) {
-                        k = keys[j];
-                        copy[k] = stack[i][k];
-                    }
-                }
-                return copy;
-            }
         }
     }
 

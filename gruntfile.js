@@ -28,7 +28,7 @@ module.exports = function(grunt) {
                     'src/parser.js',
                     'build/build.wrap.end.js'
                 ],
-                dest: 'dist/configurator.js'
+                dest: 'dist/conditions.js'
             }
         },
         uglify: {
@@ -37,7 +37,7 @@ module.exports = function(grunt) {
             },
             dist: {
                 files: {
-                    'dist/configurator.min.js': ['dist/configurator.js']
+                    'dist/conditions.min.js': ['dist/conditions.js']
                 }
             }
 
@@ -50,6 +50,7 @@ module.exports = function(grunt) {
     grunt.loadNpmTasks('grunt-contrib-jshint');
 
     //Create the tasks
-    grunt.registerTask('build', ['shell:escodegen', 'concat:dist']);
-    grunt.registerTask('default', ['jshint:src', 'build']);
+    grunt.registerTask('build', ['shell:escodegen', 'concat:dist', 'uglify:dist']);
+    grunt.registerTask('test', ['jshint:src']);
+    grunt.registerTask('default', ['test', 'build']);
 };

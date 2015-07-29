@@ -2209,7 +2209,8 @@
         'tarball': 'http://registry.npmjs.org/escodegen/-/escodegen-1.6.1.tgz'
       },
       'directories': {},
-      '_resolved': 'https://registry.npmjs.org/escodegen/-/escodegen-1.6.1.tgz'
+      '_resolved': 'https://registry.npmjs.org/escodegen/-/escodegen-1.6.1.tgz',
+      'readme': 'ERROR: No README data found!'
     };
   });
   require.define('/node_modules/escodegen/node_modules/source-map/lib/source-map.js', function (module, exports, __dirname, __filename) {

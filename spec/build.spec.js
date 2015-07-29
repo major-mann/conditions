@@ -5,10 +5,10 @@ describe('build tests', function () {
 
     describe('commonjs', function () {
         it('should exist', function () {
-            expect(fs.existsSync('./dist/configurator.commonjs.js')).toBe(true);
+            expect(fs.existsSync('./dist/conditions.js')).toBe(true);
         });
         it('should return the parser function in the exports', function () {
-            var parse = require('../dist/configurator.commonjs.js'),
+            var parse = require('../dist/conditions.js'),
                 test = parse('{ foo: "bar", exp: foo + "baz" }');
 
             expect(test).toEqual(jasmine.any(Object));
