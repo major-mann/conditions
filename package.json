@@ -10,7 +10,7 @@
     "expression",
     "expressions"
   ],
-  "main": "src/parser.js",
+  "main": "src/index.js",
   "bugs": "https://github.com/major-mann/conditions/issues",
   "scripts": {
     "test": "(grunt test || echo Grunt not found, skipping lint check) && (node node_modules/istanbul/lib/cli.js cover node_modules/jasmine/bin/jasmine.js)"
