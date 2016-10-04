@@ -1,12 +1,12 @@
 {
   "name": "conditions",
-  "version": "0.0.1",
+  "version": "0.9.0",
   "authors": [
     "Calvin Mann <calvinmann@gmail.com>"
   ],
   "description": "A javascript configuration engine",
   "keywords": ["configuration", "config", "condition", "conditions"],
-  "main": "dist/conditions.js",
+  "main": "dist/conditions.min.js",
   "bugs": "https://github.com/major-mann/conditions/issues",
   "moduleType": [
     "amd",
