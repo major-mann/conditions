@@ -1,3 +1,0 @@
-exports = reqCache;
-escodegen = { };
-(function() {
