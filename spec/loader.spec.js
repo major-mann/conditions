@@ -208,9 +208,8 @@ describe('loader', function () {
                     var def = Object.getOwnPropertyDescriptor(config, 'foo');
                     expect(def.value).toBe('bar');
                     expect(def.configurable).toBe(false);
-
                     def = Object.getOwnPropertyDescriptor(config.$sub, 'baz');
-                    expect(def.get()).toBe('world');
+                    expect(def.get.call(config.$sub)).toBe('world');
                     expect(def.configurable).toBe(false);
                     done();
                 })

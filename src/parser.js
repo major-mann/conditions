@@ -94,7 +94,7 @@
          * Returns a function which can be used as a getter to get the value of the template
          *   literal.
          */
-        function parseTemplateLiteral(block, obj) {
+        function parseTemplateLiteral(block) {
             var parts, oblock, body, func, res, i;
             if (block.expressions.length) {
 
@@ -148,7 +148,7 @@
                 res = function (context) {
                     var val, e;
                     try {
-                        val = func.call(obj, context);
+                        val = func.call(this, context);
                     } catch (err) {
                         e = prepareError(err, oblock);
                         throw e;
@@ -175,7 +175,7 @@
 
             /** Calls parseblock with the array as the second arg */
             function mapVal(block) {
-                var parsed = parseBlock(block, arr);
+                var parsed = parseBlock(block);
                 arr.push(parsed);
             }
         }
@@ -261,7 +261,7 @@
             function parseProperty(prop) {
                 var name, value;
                 name = propName(prop.key);
-                value = parseBlock(prop.value, result);
+                value = parseBlock(prop.value);
                 return {
                     name: name,
                     value: value
@@ -330,11 +330,13 @@
                     } else if (isObject(locals) && locals.hasOwnProperty(name)) {
                         // Coming from an object in the config file with an id property.
                         value = locals[name];
-                    } else if (environment.hasOwnProperty(name)) {
+                    } else if (isObject(environment) && environment.hasOwnProperty(name)) {
                         // Coming from the consumer supplied globals
                         value = environment[name];
                     } else if (name === module.exports.PROPERTY_BASE_NAME) {
                         value = proto && proto[prop.name];
+                    } else if (proto && name in proto) { // We do this here for precedence
+                        value = proto && proto[name];
                     } else {
                         // TODO: This is invalid if we, for example, have a typeof variable...
                         //  Not sure at this point how to achieve that.
@@ -353,7 +355,7 @@
         *   and returns a function which executes the expression with the
         *   given context.
         */
-        function parseExpression(oblock, obj) {
+        function parseExpression(oblock) {
             var body, func, res, block = oblock;
 
             // Ensure we are not doing something invalid.
@@ -378,7 +380,7 @@
             res = function (context) {
                 var val, e;
                 try {
-                    val = func.call(obj, context);
+                    val = func.call(this, context);
                 } catch (err) {
                     e = prepareError(err, oblock);
                     throw e;
@@ -423,7 +425,7 @@
         * Parses the supplied block into a value.
         * @param {object} block The block to parse
         */
-        function parseBlock(block, object) {
+        function parseBlock(block) {
             var supported = blockSupported(block);
             if (supported) {
                 switch (block.type) {
@@ -434,7 +436,7 @@
                     case 'Literal':
                         return parseLiteral(block);
                     case 'TemplateLiteral':
-                        return parseTemplateLiteral(block, object);
+                        return parseTemplateLiteral(block);
                     case 'ConditionalExpression':
                     case 'BinaryExpression':
                     case 'MemberExpression':
@@ -443,7 +445,7 @@
                     case 'ThisExpression':
                     case 'Identifier':
                     case 'Property':
-                        return parseExpression(block, object);
+                        return parseExpression(block);
                     default:
                         throw new Error('Critical error. Invalid program!');
                 }

@@ -1,5 +1,5 @@
 describe('levels', function () {
-    var levels, parse;
+    var levels, parse, fs = require('fs');
 
     beforeEach(function () {
         delete require.cache[require.resolve('../src/levels.js')];
@@ -255,6 +255,18 @@ describe('levels', function () {
                 expect(result.vals[1].foo).toEqual(jasmine.any(Object));
                 expect(result.vals[1].foo.bar).toBe('baz');
             });
+
+            it('should set the prototypes so that base properties are available', function () {
+                var lvl1 = parse(data('extend.production')),
+                    lvl2 = parse(data('extend.development')),
+                    config;
+                config = extend(lvl1, [lvl2]);
+
+                expect(config.server.domain).toBe('dev-example.com');
+                expect(config.server.url).toBe('https://dev-example.com');
+                config.server.port = 8080;
+                expect(config.server.url).toBe('https://dev-example.com:8080');
+            });
         });
     });
 
@@ -296,4 +308,9 @@ describe('levels', function () {
             expect(def.configurable).toBe(false);
         });
     });
+
+    /** Reads the contents from the specified data file */
+    function data(file) {
+        return fs.readFileSync('./spec/data/data.' + file + '.config', { encoding: 'utf8' });
+    }
 });

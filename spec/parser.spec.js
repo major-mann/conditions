@@ -100,7 +100,6 @@ describe('configuration parser', function () {
     describe('interpolation', function () {
         var config;
         beforeEach(function () {
-            debugger;
             config = parse(data('interpolation'));
         });
         it('should return the value with the variables interpolated into the string', function () {
