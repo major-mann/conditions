@@ -91,6 +91,79 @@
         }
 
         /**
+         * Returns a function which can be used as a getter to get the value of the template
+         *   literal.
+         */
+        function parseTemplateLiteral(block, obj) {
+            var parts, oblock, body, func, res, i;
+            if (block.expressions.length) {
+
+                // Process the identifiers
+                block = processIdentifiers(block);
+
+                parts = [];
+                for (i = 0; i < block.quasis.length; i++) {
+                    parts.push({
+                        type: 'Literal',
+                        value: block.quasis[i].value.cooked
+                    });
+                    if (!block.quasis[i].tail) {
+                        parts.push(block.expressions[i]);
+                    }
+                }
+
+                // Keep a reference to the original for errors
+                oblock = block;
+
+                // Create binary expression
+                block = {
+                    type: 'BinaryExpression',
+                    operator: '+',
+                    left: parts.shift(),
+                    right: parts.shift()
+                };
+
+                while (parts.length) {
+                    block = {
+                        type: 'BinaryExpression',
+                        operator: '+',
+                        left: block,
+                        right: parts.shift()
+                    };
+                }
+
+                // Wrap the expression with a return statement
+                block = {
+                    type: 'ReturnStatement',
+                    argument: block
+                };
+
+                // Generate the code
+                body = escodegen.generate(block);
+
+                // Create the getter function
+                func = new Function(['context'], body); // jshint ignore:line
+
+                // Build a function which will give us line and column information.
+                res = function (context) {
+                    var val, e;
+                    try {
+                        val = func.call(obj, context);
+                    } catch (err) {
+                        e = prepareError(err, oblock);
+                        throw e;
+                    }
+                    return val;
+                };
+
+                return res;
+            } else {
+                return block.quasis[0].value.cooked;
+            }
+
+        }
+
+        /**
         * Parses an array expression, and returns an array.
         * @param {object} block The ArrayExpression to parse.
         * @returns {array} The Array representing the supplied block.
@@ -117,7 +190,6 @@
                 props;
 
             result = Object.create(proto);
-            // TODO: Why am i not seeing these properties in the loader?!?!??
 
             // Add locals to the prototype.
             if (module.exports.PROPERTY_PROTOTYPE_LOCALS) {
@@ -266,6 +338,8 @@
                     } else {
                         // TODO: This is invalid if we, for example, have a typeof variable...
                         //  Not sure at this point how to achieve that.
+                        // May need to be done by passing an additional parameter to this function
+                        //  indcating no error on non-existence,
                         throw new Error('identifier named "' + name + '" has not been declared!');
                     }
                     return value;
@@ -314,121 +388,6 @@
 
             return res;
 
-            /**
-            * Replaces identifiers that are not in the list of VALID_GLOBALS with a call to
-            * context with the name of the identifier.
-            */
-            function processIdentifiers(obj) {
-                // Note: While in most normal situations we would have to deal with adding
-                //   the variables to some collection so they can be excluded from processing
-                //   when adjusting the root identifiers. However, in this case we do not allow
-                //   variable declarations in the expression, so we cannot have any to add.
-
-                return processBlock(obj);
-
-                /** Processes a block for potential identifiers. */
-                function processBlock(block) {
-                    var i;
-                    switch(block.type) {
-                        case 'ConditionalExpression':
-                            processBlock(block.test);
-                            processBlock(block.consequent);
-                            processBlock(block.alternate);
-                            break;
-                        case 'ObjectExpression':
-                            for (i = 0; i < block.properties.length; i++) {
-                                processPotentialIdentifier(block.properties[i], 'value');
-                            }
-                            break;
-                        case 'BinaryExpression':
-                            processPotentialIdentifier(block, 'left');
-                            processPotentialIdentifier(block, 'right');
-                            break;
-                        case 'MemberExpression':
-                            processPotentialIdentifier(block, 'object');
-                            break;
-                        case 'ArrayExpression':
-                            for (i = 0; i < block.elements.length; i++) {
-                                processPotentialIdentifier(block.elements, i);
-                            }
-                            break;
-                        case 'CallExpression':
-                            processPotentialIdentifier(block, 'callee');
-                            for (i = 0; i < block.arguments.length; i++) {
-                                processPotentialIdentifier(block.arguments, i);
-                            }
-                            break;
-                        case 'UnaryExpression':
-                            processPotentialIdentifier(block, 'argument');
-                            break;
-                        case 'Identifier':
-                            block = processIdentifierBlock(block);
-                            break;
-                        case 'ThisExpression':
-                        case 'Literal':
-                            // Nothing to process
-                            break;
-                        default:
-                            throw new Error('invalid program! Got ' + block.type);
-                    }
-
-                    return block;
-
-                    /**
-                    * Checks whether the property on block is an identifier.
-                    * If it is, it is processed, otherwise the block is recursively processed.
-                    */
-                    function processPotentialIdentifier(block, property) {
-                        if (block[property].type === 'Identifier') {
-                            processIdentifier(block, property);
-                        } else {
-                            processBlock(block[property]);
-                        }
-                    }
-
-                    /** Processes the identifier on the supplied block at the supplied property */
-                    function processIdentifier(block, property) {
-                        block[property] = processIdentifierBlock(block[property]);
-                    }
-
-                    /**
-                     * Replaces the identifier block if necesary, otherwise just returns the
-                     *  supplied block unmodified.
-                     */
-                    function processIdentifierBlock(block) {
-                        var msg;
-                        if (module.exports.VALID_GLOBALS.indexOf(block.name) === -1) {
-                            if (module.exports.ILLEGAL_GLOBALS.indexOf(block.name) > -1) {
-                                msg = errorMessage('use of "' + block.name + '" is illegal', block);
-                                throw new Error(msg);
-                            } else {
-                                // Generates context.call(this, <block.name>)
-                                block = {
-                                    type: 'CallExpression',
-                                    callee: {
-                                        type: 'MemberExpression',
-                                        computed: false,
-                                        object: {
-                                            type: 'Identifier',
-                                            name: 'context'
-                                        },
-                                        property: {
-                                            type: 'Identifier',
-                                            name: 'call'
-                                        }
-                                    },
-                                    arguments: [
-                                        { type: 'ThisExpression' },
-                                        { type: 'Literal', value: block.name }
-                                    ]
-                                };
-                            }
-                        }
-                        return block;
-                    }
-                }
-            }
-
             /** Ensures blocks are valid */
             function validateBlock(obj) {
                 var keys;
@@ -448,16 +407,16 @@
                     validateBlock(obj[name]);
                 }
             }
+        }
 
-            /** Attempts to add line and column information to an error */
-            function prepareError(err, block) {
-                if (err instanceof Error) {
-                    err.message = errorMessage(err.message, block);
-                } else {
-                    err = errorMessage(err, block);
-                }
-                return err;
+        /** Attempts to add line and column information to an error */
+        function prepareError(err, block) {
+            if (err instanceof Error) {
+                err.message = errorMessage(err.message, block);
+            } else {
+                err = errorMessage(err, block);
             }
+            return err;
         }
 
         /**
@@ -474,7 +433,8 @@
                         return parseArray(block);
                     case 'Literal':
                         return parseLiteral(block);
-
+                    case 'TemplateLiteral':
+                        return parseTemplateLiteral(block, object);
                     case 'ConditionalExpression':
                     case 'BinaryExpression':
                     case 'MemberExpression':
@@ -502,6 +462,7 @@
                 case 'MemberExpression':
                 case 'UnaryExpression':
                 case 'ArrayExpression':
+                case 'TemplateLiteral':
                 case 'CallExpression':
                 case 'ThisExpression':
                 case 'Identifier':
@@ -544,6 +505,136 @@
                 default:
                     throw new Error(errorMessage('unrecognized block type "' +
                         block.type + '"', block));
+            }
+        }
+
+        /**
+        * Replaces identifiers that are not in the list of VALID_GLOBALS with a call to
+        * context with the name of the identifier.
+        */
+        function processIdentifiers(obj) {
+            // Note: While in most normal situations we would have to deal with adding
+            //   the variables to some collection so they can be excluded from processing
+            //   when adjusting the root identifiers. However, in this case we do not allow
+            //   variable declarations in the expression, so we cannot have any to add.
+
+            return processBlock(obj);
+
+            /** Processes a block for potential identifiers. */
+            function processBlock(block) {
+                var i;
+                switch(block.type) {
+                    case 'ConditionalExpression':
+                        processBlock(block.test);
+                        processBlock(block.consequent);
+                        processBlock(block.alternate);
+                        break;
+                    case 'ObjectExpression':
+                        for (i = 0; i < block.properties.length; i++) {
+                            processPotentialIdentifier(block.properties[i], 'value');
+                        }
+                        break;
+                    case 'BinaryExpression':
+                        processPotentialIdentifier(block, 'left');
+                        processPotentialIdentifier(block, 'right');
+                        break;
+                    case 'MemberExpression':
+                        processPotentialIdentifier(block, 'object');
+                        break;
+                    case 'ArrayExpression':
+                        for (i = 0; i < block.elements.length; i++) {
+                            processPotentialIdentifier(block.elements, i);
+                        }
+                        break;
+                    case 'CallExpression':
+                        processPotentialIdentifier(block, 'callee');
+                        for (i = 0; i < block.arguments.length; i++) {
+                            processPotentialIdentifier(block.arguments, i);
+                        }
+                        break;
+                    case 'UnaryExpression':
+                        processPotentialIdentifier(block, 'argument');
+                        break;
+                    case 'Identifier':
+                        block = processIdentifierBlock(block);
+                        break;
+                    case 'TemplateLiteral':
+                        for (i = 0; i < block.expressions.length; i++) {
+                            processPotentialIdentifier(block.expressions, i);
+                        }
+                        break;
+                    case 'ThisExpression':
+                    case 'Literal':
+                        // Nothing to process
+                        break;
+                    default:
+                        throw new Error('invalid program! Got ' + block.type);
+                }
+
+                return block;
+
+                /**
+                * Checks whether the property on block is an identifier.
+                * If it is, it is processed, otherwise the block is recursively processed.
+                */
+                function processPotentialIdentifier(block, property) {
+                    if (block[property].type === 'Identifier') {
+                        processIdentifier(block, property);
+                    } else {
+                        processBlock(block[property]);
+                    }
+                }
+
+                /** Processes the identifier on the supplied block at the supplied property */
+                function processIdentifier(block, property) {
+                    block[property] = processIdentifierBlock(block[property]);
+                }
+
+                /**
+                 * Replaces the identifier block if necesary, otherwise just returns the
+                 *  supplied block unmodified.
+                 */
+                function processIdentifierBlock(block) {
+                    if (validateIdentifier(block)) {
+                        // Generates context.call(this, <block.name>)
+                        block = {
+                            type: 'CallExpression',
+                            callee: {
+                                type: 'MemberExpression',
+                                computed: false,
+                                object: {
+                                    type: 'Identifier',
+                                    name: 'context'
+                                },
+                                property: {
+                                    type: 'Identifier',
+                                    name: 'call'
+                                }
+                            },
+                            arguments: [
+                                { type: 'ThisExpression' },
+                                { type: 'Literal', value: block.name }
+                            ]
+                        };
+                    }
+                    return block;
+                }
+
+                /**
+                 * Returns false if identifier is a valid global, true if it is not, and throws
+                 *  an error if the identifier is illegal.
+                 */
+                function validateIdentifier(block) {
+                    var msg;
+                    if (module.exports.VALID_GLOBALS.indexOf(block.name) > -1) {
+                        return false;
+                    } else if (module.exports.ILLEGAL_GLOBALS.indexOf(block.name) > -1) {
+                        msg = errorMessage('use of "' + block.name + '" is illegal', block);
+                        throw new Error(msg);
+                    } else {
+                        return true;
+                    }
+                }
             }
         }
 

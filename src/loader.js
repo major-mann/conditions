@@ -201,7 +201,8 @@
 
             /** Processes an object property. */
             function processProperty(prop) {
-                var def = Object.getOwnPropertyDescriptor(obj, prop);
+                var def = Object.getOwnPropertyDescriptor(obj, prop),
+                    val;
                 if (def.hasOwnProperty('value')) {
                     def.writable = !options.readOnly;
                 }
@@ -209,7 +210,13 @@
                     def.configurable = !options.protectStructure;
                     Object.defineProperty(obj, prop, def);
                 }
-                protect(obj[prop]);
+                try {
+                    val = obj[prop];
+                    protect(val);
+                } catch (err) {
+                    // We cannot do anything if the property is in error (This could be caused,
+                    //  for example, by an invalid expression)...
+                }
             }
         }
     }

@@ -97,6 +97,22 @@ describe('configuration parser', function () {
         });
     });
 
+    describe('interpolation', function () {
+        var config;
+        beforeEach(function () {
+            debugger;
+            config = parse(data('interpolation'));
+        });
+        it('should return the value with the variables interpolated into the string', function () {
+            expect(config.value).toBe('hello cruel world!');
+        });
+        it('should return a new value if any of the variables have changed', function () {
+            expect(config.value).toBe('hello cruel world!');
+            config.type = 'good';
+            expect(config.value).toBe('hello good world!');
+        });
+    });
+
     describe('objects', function () {
         it('should parse sub objects in the configuration', function () {
             var val = parse(data('object'));
