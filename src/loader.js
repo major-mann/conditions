@@ -106,7 +106,7 @@
                 /** Processes a key from the object for loader properties. */
                 function processKey(key) {
                     var loadPromise;
-                    if (common.startsWith(key, options.prefix)) {
+                    if (key !== options.prefix && common.startsWith(key, options.prefix)) {
                         loadPromise = loader(obj[key], key, config);
                         if (!(loadPromise instanceof Promise)) {
                             loadPromise = Promise.resolve(loadPromise);
