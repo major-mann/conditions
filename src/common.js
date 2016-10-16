@@ -69,7 +69,7 @@
                 history.push(val);
                 results.push(res);
                 for (i = 0; i < res.length; i++) {
-                    res[i] = clone(res[i]);
+                    res[i] = clone(res[i], history, results);
                 }
                 return res;
             case 'regexp':
