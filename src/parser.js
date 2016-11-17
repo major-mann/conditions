@@ -31,14 +31,16 @@
     * @param {string} str The data to parse.
     * @param {object} options The options to use when parsing the data. The following options are
     *   supported:
-    *       * environment - Environment variables to pass to the expressions.
-    *       * protectStructure - True to make object, array and getters non configurable. Defaults
-    *           to false.
-    *       * readOnly - True to disable any setting of properties. Defaults to false.
-    * @throws Error When str is not a string.
+    *       * {object} environment - Environment variables to pass to the expressions.
+    *       * {boolean} protectStructure - True to make object, array and getters non configurable.
+    *           Defaults to false.
+    *       * {boolean}  readOnly - True to disable any setting of properties. Defaults to false.
+    *       * {function} custom - A function to call that allows custom expressions functions
+    *           to be constructed.
+    * @throws {error} When str is not a string.
     */
     function parse(str, options) {
-        var code, locals = { };
+        var code, config, locals = { };
 
         // Ensure the data is valid
         if (typeof str !== 'string') {
@@ -73,9 +75,9 @@
         //   or an array.
         switch (code.type) {
             case 'ObjectExpression':
-                return parseObject(code);
+                return parseObject(code, true);
             case 'ArrayExpression':
-                return parseArray(code);
+                return parseArray(code, true);
             default:
                 throw new Error(errorMessage('configuration MUST have an object or array as the ' +
                     'root element. Got "' + code.type + '"', code));
@@ -168,8 +170,11 @@
         * @param {object} block The ArrayExpression to parse.
         * @returns {array} The Array representing the supplied block.
         */
-        function parseArray(block) {
+        function parseArray(block, initial) {
             var arr = [];
+            if (initial) {
+                config = arr;
+            }
             block.elements.forEach(mapVal);
             return arr;
 
@@ -184,12 +189,16 @@
         * Parses the supplied block
         * @param {object} block The block representing the object
         */
-        function parseObject(block) {
+        function parseObject(block, initial) {
             var proto = {},
                 result,
                 props;
 
             result = Object.create(proto);
+
+            if (initial) {
+                config = result;
+            }
 
             // Add locals to the prototype.
             if (module.exports.PROPERTY_PROTOTYPE_LOCALS) {
@@ -358,23 +367,29 @@
         function parseExpression(oblock) {
             var body, func, res, block = oblock;
 
-            // Ensure we are not doing something invalid.
-            validateBlock(block);
+            // Get the possible custom expression function.
+            func = customProcess(block, config, options.environment, locals);
 
-            // Process the identifiers
-            block = processIdentifiers(block);
+            // Process normally if we did not get a function back.
+            if (typeof func !== 'function') {
+                // Ensure we are not doing something invalid.
+                validateBlock(block);
 
-            // Wrap the expression with a return statement
-            block = {
-                type: 'ReturnStatement',
-                argument: block
-            };
+                // Process the identifiers
+                block = processIdentifiers(block);
 
-            // Generate the code
-            body = escodegen.generate(block);
+                // Wrap the expression with a return statement
+                block = {
+                    type: 'ReturnStatement',
+                    argument: block
+                };
 
-            // Create the getter function
-            func = new Function(['context'], body); // jshint ignore:line
+                // Generate the code
+                body = escodegen.generate(block);
+
+                // Create the getter function
+                func = new Function(['context'], body); // jshint ignore:line
+            }
 
             // Build a function which will give us line and column information.
             res = function (context) {
@@ -656,6 +671,14 @@
         /** Simple non-null object check */
         function isObject(val) {
             return val && typeof val === 'object';
+        }
+
+        function customProcess(block, config, environment, locals) {
+            if (options.custom && typeof options.custom === 'function') {
+                return options.custom(block, config, environment, locals);
+            } else {
+                return false;
+            }
         }
     }
 
