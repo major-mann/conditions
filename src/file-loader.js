@@ -38,11 +38,16 @@ function load() {
     // Now process locations 1 at a time
     lvls = [];
     args = Array.prototype.slice.call(arguments).filter(string);
+    while (!args[0] && args.length) {
+        args[i].shift();
+    }
     if (args.length) {
         res = processLocation(args[0]).then(addLevel);
         for (i = 1; i < args.length; i++) {
-            res = res.then(doProcessLocation(args[i]))
-                .then(addLevel);
+            if (args[i]) {
+                res = res.then(doProcessLocation(args[i]))
+                    .then(addLevel);
+            }
         }
         res = res.then(function () { return lvls; }).then(combineLevels);
     } else {

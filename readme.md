@@ -1,6 +1,34 @@
 # Conditions
 Quick note: This is not yet published on NPM or bower, I am planning on doing so soon.
 
+## Quick start
+A convenience loader is supplied which allows `FS` and `HTTP` loading in node, and `HTTP` loading in
+the browser.
+
+`npm install conditions` or `bower install conditions`
+
+`npm install conditions`
+
+`conditions('config/production', process.NODE_ENV === 'development' ? 'config/development' : '')`
+
+### Notes on the paths
+A relative path is set relative to the page in the browser, and the current working
+directory in node. If an absolute path is received, it will override this relative path. If a
+`URL` is supplied the domain will become part of the base and a `file://` URI should be used to
+clear the HTTP part from the base if desired (and set a new base since we always expect an absolute
+location.) Some examples below.
+
+To load a file named `production` in the `config` directory found in the current working
+directory (`process.cwd()`), then extend it with `development` and `local`, which are also
+found in the `config` directory.
+* `conditions('/config/production', 'development', 'local')`
+
+To load a file from `http://example.com/config/production`, extend it with a file from
+`http://example.com/config/production`, extend it with a file `local1` from the `config` directory,
+then with a file `local2`, also from the `config` directory.
+* `conditions('http://example.com/config/production', 'development', 'file:///config/local1', 'local2')`
+
+## About conditions
 Conditions aims to be a fully fledged configuration manager for javascript. It contains 3 main
 components which are documented below:
 * Parser - Responsible for generating a configuration object or array from the supplied source
@@ -122,7 +150,7 @@ Consider the following example of server configuration. If we were using plain J
 
         site: {
             home: server.url + 'index.html',
-            api: server.url + 'api/'
+            api: `${server.url}api/`
         }
      }
 
@@ -203,7 +231,7 @@ The following commands may be issues:
     (See above) property is used to determine which element to replace.
 * **clear** - Removed all items from the array.
 
-# Roadmap
+# Roadmap to V1.0.0
 * Event emitters for config changes. These should include checking for changes to expression
     properties.
 * Allow `parser.PROPERTY_PROTOTYPE_ENVIRONMENT` and `parser.PROPERTY_PROTOTYPE_LOCALS` to be set as
@@ -214,3 +242,8 @@ The following commands may be issues:
 * Write a custom extend function so lodash can be removed (reducing the overhead of the browserify
     output)
 * Allow array commands to insert before or after a located value.
+* Move to ES6
+    * Modify code to include language features such as const, templated strings and arrow functions.
+    * Changing $locals and $environment to symbols and switch their associated constants.
+* Move across to mocha + chai testing.
+* Adding travis CI and codecov.io support.
