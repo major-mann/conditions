@@ -100,6 +100,8 @@
             var parts, oblock, body, func, res, i;
             if (block.expressions.length) {
 
+                // TODO: Are we replacing identifiers with context?
+
                 // Process the identifiers
                 block = processIdentifiers(block);
 
