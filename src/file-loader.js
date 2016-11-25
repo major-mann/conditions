@@ -13,6 +13,8 @@ var loader = require('./loader.js'),
 var HTTP_MATCH = /^https?:\/\//i,
     FILE_MATCH = /^file:\/\//i;
 
+load.warnOnError = true;
+
 module.exports = load;
 
 /**
@@ -42,7 +44,8 @@ function load() {
         args[i].shift();
     }
     if (args.length) {
-        res = processLocation(args[0]).then(addLevel);
+        res = processLocation(args[0])
+            .then(addLevel);
         for (i = 1; i < args.length; i++) {
             if (args[i]) {
                 res = res.then(doProcessLocation(args[i]))
@@ -56,7 +59,9 @@ function load() {
     return res;
 
     function addLevel(l) {
-        lvls.push(l);
+        if (l) {
+            lvls.push(l);
+        }
     }
 
     function string(str) {
@@ -71,7 +76,17 @@ function load() {
 
     function processLocation(location) {
         return loadFile(location, true)
-            .then(processData);
+            .then(processData)
+            .catch(onError);
+
+        function onError(err) {
+            if (load.warnOnError) {
+                console.warn('Unable to load configuration file from "%s". Skipping', location);
+                console.warn(err);
+            } else {
+                throw err;
+            }
+        }
     }
 
     function processData(configData) {
