@@ -11,6 +11,7 @@
     module.exports.COMMAND_CHECK = defaultCommandCheck;
 
     var common = require('./common.js'),
+        parser = require('./parser.js'),
         lodash = require('lodash');
 
     /**
@@ -24,8 +25,19 @@
      *  * protectStructure - Whether to make properties non-configurable
      */
     function load(config, levels, options) {
-        var i, result;
+        var i, result, rootLocals, locals;
         options = lodash.extend({}, options);
+
+        locals = {};
+        if (config && typeof config === 'object') {
+            rootLocals = Object.getPrototypeOf(config);
+            rootLocals = rootLocals && rootLocals[parser.PROPERTY_PROTOTYPE_LOCALS];
+            if (rootLocals) {
+                Object.assign(locals, rootLocals);
+            }
+        }
+
+
 
         // Process all arguments.
         result = config;
@@ -55,9 +67,29 @@
 
         function objectExtend(base, extend) {
             var proto = Object.create(base),
-                result = Object.create(proto);
+                result = Object.create(proto),
+                id;
+
+            id = proto[parser.PROPERTY_PROTOTYPE_ID];
+            if (locals[id] === base) {
+                locals[id] = result;
+            }
+
+            // Add the locals
+            Object.defineProperty(proto, parser.PROPERTY_PROTOTYPE_LOCALS, {
+                enumerable: false,
+                value: locals,
+                writable: !options.readOnly,
+                configurable: !options.protectStructure
+            });
 
             Object.keys(extend).forEach(process);
+
+            // Note: We process all properties that are not on extend here
+            //  (the function filters) so that we can assign the correct context
+            //  locals in the final object.
+            Object.keys(base).filter(unprocessed).forEach(reverseProcess);
+
             return result;
 
             function process(key) {
@@ -87,6 +119,18 @@
                     def.configurable = !options.protectStructure;
                 }
                 Object.defineProperty(res, key, def);
+            }
+
+            function unprocessed(key) {
+                return common.typeOf(base[key]) === 'object' && !result.hasOwnProperty(key);
+            }
+
+            function reverseProcess(key) {
+                Object.defineProperty(result, key, {
+                    configurable: !options.protectStructure,
+                    writable: !options.readOnly,
+                    value: objectExtend(base[key], {})
+                });
             }
         }
 

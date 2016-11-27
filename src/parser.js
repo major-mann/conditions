@@ -205,7 +205,7 @@
             // Add locals to the prototype.
             if (module.exports.PROPERTY_PROTOTYPE_LOCALS) {
                 Object.defineProperty(proto, module.exports.PROPERTY_PROTOTYPE_LOCALS, {
-                    enumerable: true,
+                    enumerable: false,
                     value: locals,
                     writable: !options.readOnly,
                     configurable: !options.protectStructure
@@ -214,7 +214,7 @@
             // Add environment variables to the prototype.
             if (module.exports.PROPERTY_PROTOTYPE_ENVIRONMENT) {
                 Object.defineProperty(proto, module.exports.PROPERTY_PROTOTYPE_ENVIRONMENT, {
-                    enumerable: true,
+                    enumerable: false,
                     value: options.environment,
                     writable: !options.readOnly,
                     configurable: !options.protectStructure
