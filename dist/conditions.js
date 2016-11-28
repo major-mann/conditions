@@ -38047,8 +38047,6 @@ function load() {
             objs.set(base, result);
 
             id = bproto[parser.PROPERTY_PROTOTYPE_ID];
-            locs = processLocals(proto[parser.PROPERTY_PROTOTYPE_LOCALS]);
-            env = processEnvironment(proto[parser.PROPERTY_PROTOTYPE_ENVIRONMENT]);
             if (id) {
                 updateId(id, base, result);
             }
@@ -38059,6 +38057,8 @@ function load() {
                     updateId(id, extend, result);
                 }
             }
+            locs = processLocals(bproto[parser.PROPERTY_PROTOTYPE_LOCALS]);
+            env = processEnvironment(bproto[parser.PROPERTY_PROTOTYPE_ENVIRONMENT]);
             if (env.source) {
                 tmp = objs.get(env.source);
                 if (tmp) {
@@ -38124,11 +38124,15 @@ function load() {
             }
 
             function reverseProcess(key) {
-                Object.defineProperty(result, key, {
-                    configurable: !options.protectStructure,
-                    writable: !options.readOnly,
-                    value: objectExtend(base[key], {})
-                });
+                var desc = Object.getOwnPropertyDescriptor(base, key);
+                // Don't apply to accessors
+                if (desc.value) {
+                    Object.defineProperty(result, key, {
+                        configurable: !options.protectStructure,
+                        writable: !options.readOnly,
+                        value: objectExtend(base[key], {})
+                    });
+                }
             }
         }
 
@@ -38256,15 +38260,16 @@ function load() {
         }
 
         function updateId(id, obj, updated) {
-            var i;
+            var i, target;
+            target = Object.getPrototypeOf(Object.getPrototypeOf(updated)).id;
             for (i = 0; i < locsArr.length; i++) {
-                if (locsArr[i][id] === obj) {
+                if (obj && locsArr[i][id] === obj) {
                     locsArr[i][id] = updated;
                     updates[id] = updated;
                 }
             }
             for (i = 0; i < envsArr.length; i++) {
-                if (envsArr[i][id] === obj) {
+                if (obj && envsArr[i][id] === obj) {
                     envsArr[i][id] = updated;
                     updates[id] = updated;
                 }
@@ -38794,6 +38799,7 @@ function load() {
                         locals = proto && proto[module.exports.PROPERTY_PROTOTYPE_LOCALS],
                         environment = proto && proto[module.exports.PROPERTY_PROTOTYPE_ENVIRONMENT],
                         value;
+
                     if (this.hasOwnProperty(name)) {
                         // Coming from this object.
                         value = this[name];
@@ -38805,8 +38811,8 @@ function load() {
                         value = environment[name];
                     } else if (name === module.exports.PROPERTY_BASE_NAME) {
                         value = proto && proto[prop.name];
-                    } else if (proto && name in proto) { // We do this here for precedence
-                        value = proto && proto[name];
+                    } else if (name in this) { // We do this here for precedence
+                        value = this[name];
                     } else {
                         // TODO: This is invalid if we, for example, have a typeof variable...
                         //  Not sure at this point how to achieve that.
