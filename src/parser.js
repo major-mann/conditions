@@ -335,6 +335,7 @@
                         locals = proto && proto[module.exports.PROPERTY_PROTOTYPE_LOCALS],
                         environment = proto && proto[module.exports.PROPERTY_PROTOTYPE_ENVIRONMENT],
                         value;
+
                     if (this.hasOwnProperty(name)) {
                         // Coming from this object.
                         value = this[name];
@@ -346,8 +347,8 @@
                         value = environment[name];
                     } else if (name === module.exports.PROPERTY_BASE_NAME) {
                         value = proto && proto[prop.name];
-                    } else if (proto && name in proto) { // We do this here for precedence
-                        value = proto && proto[name];
+                    } else if (name in this) { // We do this here for precedence
+                        value = this[name];
                     } else {
                         // TODO: This is invalid if we, for example, have a typeof variable...
                         //  Not sure at this point how to achieve that.
