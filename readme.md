@@ -232,6 +232,9 @@ The following commands may be issues:
 * **clear** - Removed all items from the array.
 
 # Roadmap to V1.0.0
+* Need to expose properties directly on extended config in order to be able to use things like
+    `Object.keys`
+* Change tracking, reset and commit.
 * Event emitters for config changes. These should include checking for changes to expression
     properties.
 * Allow `parser.PROPERTY_PROTOTYPE_ENVIRONMENT` and `parser.PROPERTY_PROTOTYPE_LOCALS` to be set as

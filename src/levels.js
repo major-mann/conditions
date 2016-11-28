@@ -25,19 +25,14 @@
      *  * protectStructure - Whether to make properties non-configurable
      */
     function load(config, levels, options) {
-        var i, result, rootLocals, locals;
+        var i, result,
+            locals = new WeakMap(),
+            locsArr = [],
+            envs = new WeakMap(),
+            envsArr = [],
+            objs = new WeakMap(),
+            updates = {};
         options = lodash.extend({}, options);
-
-        locals = {};
-        if (config && typeof config === 'object') {
-            rootLocals = Object.getPrototypeOf(config);
-            rootLocals = rootLocals && rootLocals[parser.PROPERTY_PROTOTYPE_LOCALS];
-            if (rootLocals) {
-                Object.assign(locals, rootLocals);
-            }
-        }
-
-
 
         // Process all arguments.
         result = config;
@@ -66,19 +61,47 @@
         }
 
         function objectExtend(base, extend) {
-            var proto = Object.create(base),
-                result = Object.create(proto),
-                id;
+            var proto, bproto, eproto, result, converted, locs, env, tmp, id;
+            converted = objs.get(base);
+            if (converted) {
+                return converted;
+            }
+            bproto = Object.getPrototypeOf(base);
+            proto = Object.create(base);
+            result = Object.create(proto);
+            objs.set(base, result);
 
-            id = proto[parser.PROPERTY_PROTOTYPE_ID];
-            if (locals[id] === base) {
-                locals[id] = result;
+            id = bproto[parser.PROPERTY_PROTOTYPE_ID];
+            locs = processLocals(proto[parser.PROPERTY_PROTOTYPE_LOCALS]);
+            env = processEnvironment(proto[parser.PROPERTY_PROTOTYPE_ENVIRONMENT]);
+            if (id) {
+                updateId(id, base, result);
+            }
+            eproto = Object.getPrototypeOf(extend);
+            if (eproto) {
+                id = eproto[parser.PROPERTY_PROTOTYPE_ID];
+                if (id) {
+                    updateId(id, extend, result);
+                }
+            }
+            if (env.source) {
+                tmp = objs.get(env.source);
+                if (tmp) {
+                    env.source = tmp;
+                }
             }
 
-            // Add the locals
+            // Add the locals and environment
             Object.defineProperty(proto, parser.PROPERTY_PROTOTYPE_LOCALS, {
                 enumerable: false,
-                value: locals,
+                value: locs,
+                writable: !options.readOnly,
+                configurable: !options.protectStructure
+            });
+
+            Object.defineProperty(proto, parser.PROPERTY_PROTOTYPE_ENVIRONMENT, {
+                enumerable: false,
+                value: env,
                 writable: !options.readOnly,
                 configurable: !options.protectStructure
             });
@@ -223,7 +246,54 @@
                     return val[param] === params[param];
                 }
             }
+        }
 
+        function processLocals(locs) {
+            var res;
+            if (locs && typeof locs === 'object') {
+                res = locals.get(locs);
+                if (!res) {
+                    res = Object.assign({}, locs);
+                    locsArr.push(res);
+                    Object.assign(res, updates);
+                    locals.set(locs, res);
+                }
+            } else {
+                res = {};
+            }
+            return res;
+        }
+
+        function processEnvironment(env) {
+            var res;
+            if (env && typeof env === 'object') {
+                res = envs.get(env);
+                if (!res) {
+                    res = Object.assign({}, env);
+                    envsArr.push(res);
+                    Object.assign(res, updates);
+                    envs.set(env, res);
+                }
+            } else {
+                res = {};
+            }
+            return res;
+        }
+
+        function updateId(id, obj, updated) {
+            var i;
+            for (i = 0; i < locsArr.length; i++) {
+                if (locsArr[i][id] === obj) {
+                    locsArr[i][id] = updated;
+                    updates[id] = updated;
+                }
+            }
+            for (i = 0; i < envsArr.length; i++) {
+                if (envsArr[i][id] === obj) {
+                    envsArr[i][id] = updated;
+                    updates[id] = updated;
+                }
+            }
         }
     }
 

@@ -72,6 +72,7 @@
     "yui": false,
 
     "globals": {
-        "Promise": true
+        "Promise": true,
+        "WeakMap": true
     }
 }
