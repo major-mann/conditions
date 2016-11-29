@@ -149,15 +149,11 @@
             }
 
             function reverseProcess(key) {
-                var desc = Object.getOwnPropertyDescriptor(base, key);
-                // Don't apply to accessors
-                if (desc.value) {
-                    Object.defineProperty(result, key, {
-                        configurable: !options.protectStructure,
-                        writable: !options.readOnly,
-                        value: objectExtend(base[key], {})
-                    });
-                }
+                Object.defineProperty(result, key, {
+                    configurable: !options.protectStructure,
+                    writable: !options.readOnly,
+                    value: objectExtend(base[key], {})
+                });
             }
         }
 
