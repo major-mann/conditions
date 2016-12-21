@@ -37628,7 +37628,7 @@ function extend() {
 
     /** A slightly more advanced typeof */
     function typeOf(val) {
-        var vt = typeof val;
+        const vt = typeof val;
         if (vt === 'object') {
             if (Array.isArray(val)) {
                 return 'array';
@@ -37652,12 +37652,8 @@ function extend() {
      *  from the parser, and the functions should work on which ever object is supplied.
      */
     function clone(val, history, results) {
-        var vt = typeOf(val),
-            resProto,
-            proto,
-            res,
-            idx,
-            i;
+        const vt = typeOf(val);
+        var resProto, proto, res, idx, i;
         if (!Array.isArray(history)) {
             history = [];
             results = [];
@@ -37700,7 +37696,7 @@ function extend() {
          *  and cloning the value when it is available
          */
         function copyProp(src, dest, name) {
-            var def = Object.getOwnPropertyDescriptor(src, name);
+            const def = Object.getOwnPropertyDescriptor(src, name);
             if (def.hasOwnProperty('value')) {
                 def.value = clone(def.value, history, results);
             }
@@ -37746,212 +37742,240 @@ function extend() {
  * The file loader module provides file loading functionality with a common API targeting browser
  *  and node processes.
  */
-'use strict';
+(function fileLoaderModule(module) {
+    'use strict';
 
-var loader = require('./loader.js'),
-    levels = require('./levels.js'),
-    http = require('http'),
-    path = require('path'),
-    url = require('url');
+    module.exports = load;
 
-var HTTP_MATCH = /^https?:\/\//i,
-    FILE_MATCH = /^file:\/\//i;
+    // Constants
+    const HTTP_MATCH = /^https?:\/\//i,
+        FILE_MATCH = /^file:\/\//i;
 
-load.warnOnError = true;
+    // Dependencies
+    const loader = require('./loader.js'),
+        levels = require('./levels.js'),
+        http = require('http'),
+        path = require('path'),
+        url = require('url');
 
-module.exports = load;
-
-/**
- * Loads a config file, or series of config files (config levels).
- * @param {string...} location A fs path or url where the config can be retrieved from.
- * @param {object} options The last argument is the options to pass to the loader and levels.
- */
-function load() {
-    var domain, base, suffix, res, args, options, lvls, i;
-
-    options = arguments[arguments.length - 1];
-    if (!options || typeof options !== 'object') {
-        options = {};
-    }
-
-    // Initialize the base information.
-    if (process.title === 'browser') {
-        configureBase(window.location.href);
-    } else {
-        configureBase(process.cwd());
-    }
-
-    // Now process locations 1 at a time
-    lvls = [];
-    args = Array.prototype.slice.call(arguments).filter(string);
-    while (!args[0] && args.length) {
-        args[i].shift();
-    }
-    if (args.length) {
-        res = processLocation(args[0])
-            .then(addLevel);
-        for (i = 1; i < args.length; i++) {
-            if (args[i]) {
-                res = res.then(doProcessLocation(args[i]))
-                    .then(addLevel);
-            }
-        }
-        res = res.then(function () { return lvls; }).then(combineLevels);
-    } else {
-        res = Promise.resolve();
-    }
-    return res;
-
-    function addLevel(l) {
-        if (l) {
-            lvls.push(l);
-        }
-    }
-
-    function string(str) {
-        return typeof str === 'string';
-    }
-
-    function doProcessLocation(location) {
-        return function () {
-            return processLocation(location);
-        };
-    }
-
-    function processLocation(location) {
-        return loadFile(location, true)
-            .then(processData)
-            .catch(onError);
-
-        function onError(err) {
-            if (load.warnOnError) {
-                console.warn('Unable to load configuration file from "%s". Skipping', location);
-                console.warn(err);
-            } else {
-                throw err;
-            }
-        }
-    }
-
-    function processData(configData) {
-        var ldr = defaultLoader;
-        if (typeof options.customLoader === 'function') {
-            ldr = options.customLoader;
-        }
-        return loader(configData, ldr, options);
-
-        /** The loader for imports */
-        function defaultLoader(location) {
-            return loadFile(location, false);
-        }
-    }
-
-    /** Combines loaded configs */
-    function combineLevels(lvls) {
-        return levels(lvls[0], lvls.slice(1), options);
-    }
+    // Assign global options to the functions
+    load.warnOnError = true;
 
     /**
-     * Loads the given location (could be fs or HTTP location).
-     * @param {string} The HTTP or fs location.
+     * Loads a config file, or series of config files (config levels).
+     * @param {...string} location A fs path or url where the config can be retrieved from.
+     * @param {object} options The last argument is the options to pass to the loader and levels.
      */
-    function loadFile(location, allowOverride) {
-        var pth;
-        if (HTTP_MATCH.test(location)) {
-            if (allowOverride) {
-                configureBase(location);
-            }
-            return loadHttp(location);
-        } else if (path.isAbsolute(location)) {
-            if (allowOverride) {
-                configureBase(location);
-            }
-            if (domain) {
-                return loadHttp(domain + location);
-            } else {
-                return loadFs(location);
-            }
+    function load(location, options) {
+        var domain, base, suffix, res, args, lvls, i;
+
+        options = arguments[arguments.length - 1];
+        if (!options || typeof options !== 'object') {
+            options = {};
+        }
+
+        // Initialize the base information.
+        if (process.title === 'browser') {
+            configureBase(window.location.href);
         } else {
-            pth = path.join(base, location);
-            pth = domain + pth + suffix;
-            if (HTTP_MATCH.test(pth)) {
-                return loadHttp(pth);
-            } else {
-                return loadFs(pth);
+            configureBase(process.cwd());
+        }
+
+        // Now process locations 1 at a time
+        lvls = [];
+        args = Array.prototype.slice.call(arguments).filter(string);
+        while (!args[0] && args.length) {
+            args[i].shift();
+        }
+        if (args.length) {
+            res = processLocation(args[0])
+                .then(addLevel);
+            for (i = 1; i < args.length; i++) {
+                if (args[i]) {
+                    res = res.then(doProcessLocation(args[i]))
+                        .then(addLevel);
+                }
+            }
+            res = res.then(function () { return lvls; }).then(combineLevels);
+        } else {
+            res = Promise.resolve();
+        }
+        return res;
+
+        function addLevel(l) {
+            if (l) {
+                lvls.push(l);
             }
         }
 
-        function loadFs(location) {
-            // We need to do this (wrap require) so no attempt is made to bundle fs by browserify
-            var fs = (require)('fs');
-
-            return new Promise(function (resolve, reject) {
-                fs.readFile(location, { encoding: 'utf8' }, function onFileRead(err, data) {
-                    if (err) {
-                        reject(err);
-                    } else {
-                        resolve(data);
-                    }
-                });
-            });
+        function string(str) {
+            return typeof str === 'string';
         }
 
-        function loadHttp(location) {
-            return new Promise(function (resolve, reject) {
-                var req = http.get(location, function onResponse(res) {
-                    var body = [];
-                    res.on('data', function onDataReceived(chunk) {
-                        body.push(chunk);
-                    });
-                    res.on('end', function onRequestEnd() {
-                        body = body.join('');
-                        if (res.statusCode >= 200 && res.statusCode < 300) {
-                            resolve(body);
-                        } else {
-                            reject(body);
-                        }
-                    });
-                });
-                req.on('error', function onError(err) {
-                    reject(err);
-                });
-            });
-        }
-    }
-
-    function configureBase(location) {
-        if (FILE_MATCH.test(location)) {
-            configureStandardBase();
-        } else if (domain || HTTP_MATCH.test(location)) {
-            configureHttpBase();
-        } else {
-            configureStandardBase();
+        function doProcessLocation(location) {
+            return function () {
+                return processLocation(location);
+            };
         }
 
-        function configureHttpBase() {
-            var u, parts;
-            if (HTTP_MATCH.test(location)) {
-                u = url.parse(location);
-                domain = u.protocol + '//' + u.host;
-                base = u.pathname;
-                suffix = u.search;
-            } else {
-                parts = location.split('?');
-                base = parts[0];
-                if (parts[1]) {
-                    u.search = '?' + parts[1];
+        function processLocation(location) {
+            return loadFile(location, true)
+                .then(processData)
+                .catch(onError);
+
+            function onError(err) {
+                if (load.warnOnError) {
+                    console.warn('Unable to load configuration file from "%s". Skipping', location);
+                    console.warn(err);
+                } else {
+                    throw err;
                 }
             }
         }
 
-        /** Configures the  */
-        function configureStandardBase() {
-            domain = '';
-            suffix = '';
-            base = path.dirname(location);
+        function processData(configData) {
+            var ldr = defaultLoader;
+            if (typeof options.customLoader === 'function') {
+                ldr = options.customLoader;
+            }
+            return loader(configData, ldr, options);
+
+            /** The loader for imports */
+            function defaultLoader(location) {
+                return loadFile(location, false);
+            }
+        }
+
+        /** Combines loaded configs */
+        function combineLevels(lvls) {
+            return levels(lvls[0], lvls.slice(1), options);
+        }
+
+        /**
+         * Loads the given location (could be fs or HTTP location).
+         * @param {string} location The HTTP or fs location.
+         * @param {boolean} allowOverride Whether to allow the location to override the previous
+         *  base path.
+         */
+        function loadFile(location, allowOverride) {
+            if (HTTP_MATCH.test(location)) {
+                if (allowOverride) {
+                    configureBase(location);
+                }
+                return loadHttp(location);
+            } else if (path.isAbsolute(location)) {
+                if (allowOverride) {
+                    configureBase(location);
+                }
+                if (domain) {
+                    return loadHttp(domain + location);
+                } else {
+                    return loadFs(location);
+                }
+            } else {
+                let pth = path.join(base, location);
+                pth = domain + pth + suffix;
+                if (HTTP_MATCH.test(pth)) {
+                    return loadHttp(pth);
+                } else {
+                    return loadFs(pth);
+                }
+            }
+
+            /** Load config from the local file system */
+            function loadFs(location) {
+                // We need to do this (wrap require) so no attempt is made to bundle fs by
+                //  browserify
+                const fs = (require)('fs');
+
+                return new Promise(function (resolve, reject) {
+                    fs.readFile(location, { encoding: 'utf8' }, onFileRead);
+
+                    /** A basic callback to promise wrap */
+                    function onFileRead(err, data) {
+                        if (err) {
+                            reject(err);
+                        } else {
+                            resolve(data);
+                        }
+                    }
+                });
+            }
+
+            /** Load data from an HTTP location */
+            function loadHttp(location) {
+                return new Promise(function (resolve, reject) {
+                    // Make the HTTP request
+                    const req = http.get(location, onResponse);
+                    // Ensure we catch any errors
+                    req.on('error', onError);
+
+                    /** Called once a response from the HTTP request has been received */
+                    function onResponse(res) {
+                        var body = [];
+                        res.on('data', onDataReceived);
+                        res.on('end', onRequestEnd);
+
+                        /** Called when data is received from tge request */
+                        function onDataReceived(chunk) {
+                            body.push(chunk);
+                        }
+
+                        /** Called once all data is received */
+                        function onRequestEnd() {
+                            body = body.join('');
+                            if (res.statusCode >= 200 && res.statusCode < 300) {
+                                resolve(body);
+                            } else {
+                                reject(body);
+                            }
+                        }
+                    }
+
+                    /** Called if an error occurs during the HTTP request */
+                    function onError(err) {
+                        reject(err);
+                    }
+                });
+            }
+        }
+
+        function configureBase(location) {
+            if (FILE_MATCH.test(location)) {
+                configureStandardBase();
+            } else if (domain || HTTP_MATCH.test(location)) {
+                configureHttpBase();
+            } else {
+                configureStandardBase();
+            }
+
+            /** Configures the base from an HTTP load */
+            function configureHttpBase() {
+                var u, parts;
+                if (HTTP_MATCH.test(location)) {
+                    u = url.parse(location);
+                    domain = u.protocol + '//' + u.host;
+                    base = u.pathname;
+                    suffix = u.search;
+                } else {
+                    parts = location.split('?');
+                    base = parts[0];
+                    if (parts[1]) {
+                        u.search = '?' + parts[1];
+                    }
+                }
+            }
+
+            /** Configures the base from a FS load */
+            function configureStandardBase() {
+                domain = '';
+                suffix = '';
+                base = path.dirname(location);
+            }
         }
     }
-}
+
+}(module));
 
 }).call(this,require('_process'))
 },{"./levels.js":62,"./loader.js":63,"_process":25,"fs":4,"http":49,"path":23,"url":55}],61:[function(require,module,exports){
@@ -37966,7 +37990,7 @@ function load() {
     module.exports.extend = require('./levels.js');
 
     // In a browser context, bind to the window.
-    if (process.title === 'browser') {
+    if (process.title === 'browser' && typeof window !== 'undefined') {
         window.conditions = module.exports;
     }
 }());
@@ -37985,7 +38009,7 @@ function load() {
     module.exports.PROPERTY_COMMAND_NAME = '$';
     module.exports.COMMAND_CHECK = defaultCommandCheck;
 
-    var common = require('./common.js'),
+    const common = require('./common.js'),
         parser = require('./parser.js'),
         lodash = require('lodash');
 
@@ -38091,8 +38115,8 @@ function load() {
             return result;
 
             function process(key) {
-                var def = Object.getOwnPropertyDescriptor(extend, key),
-                    res = result;
+                const def = Object.getOwnPropertyDescriptor(extend, key);
+                var res = result;
                 if (def.hasOwnProperty('value')) {
                     // Undefined indicates property removal.
                     if (def.value === undefined) {
@@ -38124,15 +38148,11 @@ function load() {
             }
 
             function reverseProcess(key) {
-                var desc = Object.getOwnPropertyDescriptor(base, key);
-                // Don't apply to accessors
-                if (desc.value) {
-                    Object.defineProperty(result, key, {
-                        configurable: !options.protectStructure,
-                        writable: !options.readOnly,
-                        value: objectExtend(base[key], {})
-                    });
-                }
+                Object.defineProperty(result, key, {
+                    configurable: !options.protectStructure,
+                    writable: !options.readOnly,
+                    value: objectExtend(base[key], {})
+                });
             }
         }
 
@@ -38150,11 +38170,14 @@ function load() {
         /** Applies the commands to the base array. */
         function applyCommands(base, commands) {
             // We need to operate on a copy of base.
-            base = base.map(function (item) {
-                return extendBase({}, item);
-            });
+            base = base.map(emptyExtend);
             commands.forEach(applyCommand);
             return base;
+
+            /** Extends an empty object so we have a new clone */
+            function emptyExtend(item) {
+                return extendBase({}, item);
+            }
 
             /** Executes the command on the base */
             function applyCommand(command) {
@@ -38323,8 +38346,8 @@ function load() {
         locals: false
     };
 
-    // Load the parser.
-    var parser = require('./parser'),
+    // Dependencies
+    const parser = require('./parser'),
         // TODO: Replace with common once extend function is written
         lodash = require('lodash'),
         common = require('./common.js');
@@ -38357,12 +38380,9 @@ function load() {
     function process(str, loader, options) {
         var imports;
         return new Promise(function (resolve, reject) {
-            var config;
-
             if (typeof loader !== 'function') {
                 throw new Error('loader MUST be a function');
             }
-
             if (options && typeof options === 'object') {
                 options = lodash.extend({}, OPTIONS_DEFAULT, options);
             } else {
@@ -38372,7 +38392,7 @@ function load() {
 
             imports = [];
             try {
-                config = parser(str, options);
+                let config = parser(str, options);
                 Promise.all(imports)
                     .then(function () { resolve(config); })
                     .catch(reject);
@@ -38408,7 +38428,9 @@ function load() {
                 }
             }
 
-            /** Processes the return value from the loader */
+            /**
+             * Processes the return value from the loader.
+             */
             function processLoaderResult(data) {
                 var env, opts;
                 if (typeof data !== 'string') {
@@ -38451,7 +38473,7 @@ function load() {
          * @param {string} name The name of the additional property to assign.
          */
         function assignAdditional(name, location) {
-            var isFunc = typeof options[name] === 'function';
+            const isFunc = typeof options[name] === 'function';
             if (isFunc) {
                 return !!options[name](location);
             } else {
@@ -38472,10 +38494,10 @@ function load() {
     // Public API
     module.exports = parse;
     // Constants
-    module.exports.PROPERTY_ID = 'id';
+    module.exports.PROPERTY_ID = 'id'; // This identifies the name of the id property when parsing.
     module.exports.PROPERTY_PROTOTYPE_ID = 'id';
-    module.exports.PROPERTY_PROTOTYPE_ENVIRONMENT = '$environment';
-    module.exports.PROPERTY_PROTOTYPE_LOCALS = '$locals';
+    module.exports.PROPERTY_PROTOTYPE_ENVIRONMENT = Symbol('$environment');
+    module.exports.PROPERTY_PROTOTYPE_LOCALS = Symbol('$locals');
     module.exports.PROPERTY_BASE_NAME = 'base';
     module.exports.VALID_GLOBALS = ['Infinity', 'NaN', 'undefined', 'Object', 'Number', 'String',
         'RegExp', 'Boolean', 'Array', 'Error', 'EvalError', 'InternalError', 'RangeError',
@@ -38485,7 +38507,7 @@ function load() {
     module.exports.ILLEGAL_GLOBALS = ['eval', 'Function'];
 
     // Dependencies
-    var esprima = require('esprima'),
+    const esprima = require('esprima'),
         escodegen = require('escodegen'),
         // TODO: Replace with common extend once it is written
         lodash = require('lodash');
@@ -38543,8 +38565,9 @@ function load() {
             case 'ArrayExpression':
                 return parseArray(code, true);
             default:
-                throw new Error(errorMessage('configuration MUST have an object or array as the ' +
-                    'root element. Got "' + code.type + '"', code));
+                let msg = `configuration MUST have an object or array as the root element. ` +
+                    `Got "${code.type}".`;
+                throw new Error(errorMessage(msg, code));
         }
 
         /** Returns the value represented by the supplied literal block */
@@ -38563,9 +38586,6 @@ function load() {
         function parseTemplateLiteral(block) {
             var parts, oblock, body, func, res, i;
             if (block.expressions.length) {
-
-                // TODO: Are we replacing identifiers with context?
-
                 // Process the identifiers
                 block = processIdentifiers(block);
 
@@ -38637,7 +38657,7 @@ function load() {
         * @returns {array} The Array representing the supplied block.
         */
         function parseArray(block, initial) {
-            var arr = [];
+            const arr = [];
             if (initial) {
                 config = arr;
             }
@@ -38724,8 +38744,8 @@ function load() {
                         return true;
                     }
                 } else {
-                    throw new Error(errorMessage('unsupported property type "' + prop.type + '"',
-                        prop));
+                    let msg = `unsupported property type "${prop.type}"`;
+                    throw new Error(errorMessage(msg, prop));
                 }
             }
 
@@ -38747,15 +38767,15 @@ function load() {
             * Returns a literal value, or identifier name depending on the block type supplied.
             */
             function propName(block) {
-                var msg;
                 switch (block.type) {
                     case 'Literal':
                         return block.value;
                     case 'Identifier':
                         return block.name;
                     default:
-                        msg = errorMessage('unable to determine a property name from a "' +
-                            block.type + '" block', block);
+                        let msg = `unable to determine a property name from a ` +
+                            `"${block.type}" block`;
+                        msg = errorMessage(msg, block);
                         throw new Error(msg);
                 }
             }
@@ -38791,7 +38811,6 @@ function load() {
                 *   object will enable to to service that new object without side effects.
                 *   i.e. There are no closure values accessed in this
                 *   function.
-                *)
                 * @param {string} name The variable to retrieve the value of.
                 */
                 function context(name) {
@@ -38818,7 +38837,7 @@ function load() {
                         //  Not sure at this point how to achieve that.
                         // May need to be done by passing an additional parameter to this function
                         //  indcating no error on non-existence,
-                        throw new Error('identifier named "' + name + '" has not been declared!');
+                        throw new Error(`identifier named "${name}" has not been declared!`);
                     }
                     return value;
                 }
@@ -38878,8 +38897,8 @@ function load() {
                 if (obj && typeof obj === 'object') {
                     if (obj.type) {
                         if (!blockSupported(obj)) {
-                            throw new Error(errorMessage('"' + obj.type +
-                                '" block is illegal in expressions.', obj));
+                            let msg = `"${obj.type}" block is illegal in expressions.`;
+                            throw new Error(errorMessage(msg, obj));
                         }
                     }
                     keys = Object.keys(obj)
@@ -38908,7 +38927,7 @@ function load() {
         * @param {object} block The block to parse
         */
         function parseBlock(block) {
-            var supported = blockSupported(block);
+            const supported = blockSupported(block);
             if (supported) {
                 switch (block.type) {
                     case 'ObjectExpression':
@@ -38929,11 +38948,12 @@ function load() {
                     case 'Property':
                         return parseExpression(block);
                     default:
+                        // We should never arrive here if supported is true.
                         throw new Error('Critical error. Invalid program!');
                 }
             } else {
-                throw new Error(errorMessage('blocks of type "' + block.type +
-                    '" not supported', block));
+                let msg = `blocks of type "${block.type}'" not supported`;
+                throw new Error(errorMessage(msg, block));
             }
         }
 
@@ -38987,8 +39007,9 @@ function load() {
                     return false;
 
                 default:
-                    throw new Error(errorMessage('unrecognized block type "' +
-                        block.type + '"', block));
+                    // TODO: Should an error be thrown here? Not very forwards compatible...
+                    let msg = `unrecognized block type "${block.type}"`;
+                    throw new Error(errorMessage(msg, block));
             }
         }
 
@@ -39006,7 +39027,6 @@ function load() {
 
             /** Processes a block for potential identifiers. */
             function processBlock(block) {
-                var i;
                 switch(block.type) {
                     case 'ConditionalExpression':
                         processBlock(block.test);
@@ -39014,7 +39034,7 @@ function load() {
                         processBlock(block.alternate);
                         break;
                     case 'ObjectExpression':
-                        for (i = 0; i < block.properties.length; i++) {
+                        for (let i = 0; i < block.properties.length; i++) {
                             processPotentialIdentifier(block.properties[i], 'value');
                         }
                         break;
@@ -39026,13 +39046,13 @@ function load() {
                         processPotentialIdentifier(block, 'object');
                         break;
                     case 'ArrayExpression':
-                        for (i = 0; i < block.elements.length; i++) {
+                        for (let i = 0; i < block.elements.length; i++) {
                             processPotentialIdentifier(block.elements, i);
                         }
                         break;
                     case 'CallExpression':
                         processPotentialIdentifier(block, 'callee');
-                        for (i = 0; i < block.arguments.length; i++) {
+                        for (let i = 0; i < block.arguments.length; i++) {
                             processPotentialIdentifier(block.arguments, i);
                         }
                         break;
@@ -39043,7 +39063,7 @@ function load() {
                         block = processIdentifierBlock(block);
                         break;
                     case 'TemplateLiteral':
-                        for (i = 0; i < block.expressions.length; i++) {
+                        for (let i = 0; i < block.expressions.length; i++) {
                             processPotentialIdentifier(block.expressions, i);
                         }
                         break;
@@ -39079,6 +39099,8 @@ function load() {
                  *  supplied block unmodified.
                  */
                 function processIdentifierBlock(block) {
+                    // TODO: If we are going to allow context to not throw an error
+                    //  in cases such as typeof we will need to
                     if (validateIdentifier(block)) {
                         // Generates context.call(this, <block.name>)
                         block = {
@@ -39109,11 +39131,11 @@ function load() {
                  *  an error if the identifier is illegal.
                  */
                 function validateIdentifier(block) {
-                    var msg;
                     if (module.exports.VALID_GLOBALS.indexOf(block.name) > -1) {
                         return false;
                     } else if (module.exports.ILLEGAL_GLOBALS.indexOf(block.name) > -1) {
-                        msg = errorMessage('use of "' + block.name + '" is illegal', block);
+                        let msg = `use of "${block.name}" is illegal`;
+                        msg = errorMessage(msg, block);
                         throw new Error(msg);
                     } else {
                         return true;
@@ -39126,9 +39148,7 @@ function load() {
         function errorMessage(msg, block) {
             var pos;
             if (block.loc) {
-                pos = '\nLine: %s. Column: %s'
-                    .replace('%s', block.loc.start.line)
-                    .replace('%s', block.loc.start.column);
+                pos = `\nLine: ${block.loc.start.line}. Column: ${block.loc.start.column}`;
             } else {
                 pos = '';
             }
@@ -39140,6 +39160,7 @@ function load() {
             return val && typeof val === 'object';
         }
 
+        /** Called to perform custom processing of a block. */
         function customProcess(block, config, environment, locals) {
             if (options.custom && typeof options.custom === 'function') {
                 return options.custom(block, config, environment, locals);

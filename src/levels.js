@@ -10,7 +10,7 @@
     module.exports.PROPERTY_COMMAND_NAME = '$';
     module.exports.COMMAND_CHECK = defaultCommandCheck;
 
-    var common = require('./common.js'),
+    const common = require('./common.js'),
         parser = require('./parser.js'),
         lodash = require('lodash');
 
@@ -116,8 +116,8 @@
             return result;
 
             function process(key) {
-                var def = Object.getOwnPropertyDescriptor(extend, key),
-                    res = result;
+                const def = Object.getOwnPropertyDescriptor(extend, key);
+                var res = result;
                 if (def.hasOwnProperty('value')) {
                     // Undefined indicates property removal.
                     if (def.value === undefined) {
@@ -171,11 +171,14 @@
         /** Applies the commands to the base array. */
         function applyCommands(base, commands) {
             // We need to operate on a copy of base.
-            base = base.map(function (item) {
-                return extendBase({}, item);
-            });
+            base = base.map(emptyExtend);
             commands.forEach(applyCommand);
             return base;
+
+            /** Extends an empty object so we have a new clone */
+            function emptyExtend(item) {
+                return extendBase({}, item);
+            }
 
             /** Executes the command on the base */
             function applyCommand(command) {

@@ -8,10 +8,10 @@
     // Public API
     module.exports = parse;
     // Constants
-    module.exports.PROPERTY_ID = 'id';
+    module.exports.PROPERTY_ID = 'id'; // This identifies the name of the id property when parsing.
     module.exports.PROPERTY_PROTOTYPE_ID = 'id';
-    module.exports.PROPERTY_PROTOTYPE_ENVIRONMENT = '$environment';
-    module.exports.PROPERTY_PROTOTYPE_LOCALS = '$locals';
+    module.exports.PROPERTY_PROTOTYPE_ENVIRONMENT = Symbol('$environment');
+    module.exports.PROPERTY_PROTOTYPE_LOCALS = Symbol('$locals');
     module.exports.PROPERTY_BASE_NAME = 'base';
     module.exports.VALID_GLOBALS = ['Infinity', 'NaN', 'undefined', 'Object', 'Number', 'String',
         'RegExp', 'Boolean', 'Array', 'Error', 'EvalError', 'InternalError', 'RangeError',
@@ -21,7 +21,7 @@
     module.exports.ILLEGAL_GLOBALS = ['eval', 'Function'];
 
     // Dependencies
-    var esprima = require('esprima'),
+    const esprima = require('esprima'),
         escodegen = require('escodegen'),
         // TODO: Replace with common extend once it is written
         lodash = require('lodash');
@@ -79,8 +79,9 @@
             case 'ArrayExpression':
                 return parseArray(code, true);
             default:
-                throw new Error(errorMessage('configuration MUST have an object or array as the ' +
-                    'root element. Got "' + code.type + '"', code));
+                let msg = `configuration MUST have an object or array as the root element. ` +
+                    `Got "${code.type}".`;
+                throw new Error(errorMessage(msg, code));
         }
 
         /** Returns the value represented by the supplied literal block */
@@ -99,9 +100,6 @@
         function parseTemplateLiteral(block) {
             var parts, oblock, body, func, res, i;
             if (block.expressions.length) {
-
-                // TODO: Are we replacing identifiers with context?
-
                 // Process the identifiers
                 block = processIdentifiers(block);
 
@@ -173,7 +171,7 @@
         * @returns {array} The Array representing the supplied block.
         */
         function parseArray(block, initial) {
-            var arr = [];
+            const arr = [];
             if (initial) {
                 config = arr;
             }
@@ -260,8 +258,8 @@
                         return true;
                     }
                 } else {
-                    throw new Error(errorMessage('unsupported property type "' + prop.type + '"',
-                        prop));
+                    let msg = `unsupported property type "${prop.type}"`;
+                    throw new Error(errorMessage(msg, prop));
                 }
             }
 
@@ -283,15 +281,15 @@
             * Returns a literal value, or identifier name depending on the block type supplied.
             */
             function propName(block) {
-                var msg;
                 switch (block.type) {
                     case 'Literal':
                         return block.value;
                     case 'Identifier':
                         return block.name;
                     default:
-                        msg = errorMessage('unable to determine a property name from a "' +
-                            block.type + '" block', block);
+                        let msg = `unable to determine a property name from a ` +
+                            `"${block.type}" block`;
+                        msg = errorMessage(msg, block);
                         throw new Error(msg);
                 }
             }
@@ -327,7 +325,6 @@
                 *   object will enable to to service that new object without side effects.
                 *   i.e. There are no closure values accessed in this
                 *   function.
-                *)
                 * @param {string} name The variable to retrieve the value of.
                 */
                 function context(name) {
@@ -354,7 +351,7 @@
                         //  Not sure at this point how to achieve that.
                         // May need to be done by passing an additional parameter to this function
                         //  indcating no error on non-existence,
-                        throw new Error('identifier named "' + name + '" has not been declared!');
+                        throw new Error(`identifier named "${name}" has not been declared!`);
                     }
                     return value;
                 }
@@ -414,8 +411,8 @@
                 if (obj && typeof obj === 'object') {
                     if (obj.type) {
                         if (!blockSupported(obj)) {
-                            throw new Error(errorMessage('"' + obj.type +
-                                '" block is illegal in expressions.', obj));
+                            let msg = `"${obj.type}" block is illegal in expressions.`;
+                            throw new Error(errorMessage(msg, obj));
                         }
                     }
                     keys = Object.keys(obj)
@@ -444,7 +441,7 @@
         * @param {object} block The block to parse
         */
         function parseBlock(block) {
-            var supported = blockSupported(block);
+            const supported = blockSupported(block);
             if (supported) {
                 switch (block.type) {
                     case 'ObjectExpression':
@@ -465,11 +462,12 @@
                     case 'Property':
                         return parseExpression(block);
                     default:
+                        // We should never arrive here if supported is true.
                         throw new Error('Critical error. Invalid program!');
                 }
             } else {
-                throw new Error(errorMessage('blocks of type "' + block.type +
-                    '" not supported', block));
+                let msg = `blocks of type "${block.type}'" not supported`;
+                throw new Error(errorMessage(msg, block));
             }
         }
 
@@ -523,8 +521,9 @@
                     return false;
 
                 default:
-                    throw new Error(errorMessage('unrecognized block type "' +
-                        block.type + '"', block));
+                    // TODO: Should an error be thrown here? Not very forwards compatible...
+                    let msg = `unrecognized block type "${block.type}"`;
+                    throw new Error(errorMessage(msg, block));
             }
         }
 
@@ -542,7 +541,6 @@
 
             /** Processes a block for potential identifiers. */
             function processBlock(block) {
-                var i;
                 switch(block.type) {
                     case 'ConditionalExpression':
                         processBlock(block.test);
@@ -550,7 +548,7 @@
                         processBlock(block.alternate);
                         break;
                     case 'ObjectExpression':
-                        for (i = 0; i < block.properties.length; i++) {
+                        for (let i = 0; i < block.properties.length; i++) {
                             processPotentialIdentifier(block.properties[i], 'value');
                         }
                         break;
@@ -562,13 +560,13 @@
                         processPotentialIdentifier(block, 'object');
                         break;
                     case 'ArrayExpression':
-                        for (i = 0; i < block.elements.length; i++) {
+                        for (let i = 0; i < block.elements.length; i++) {
                             processPotentialIdentifier(block.elements, i);
                         }
                         break;
                     case 'CallExpression':
                         processPotentialIdentifier(block, 'callee');
-                        for (i = 0; i < block.arguments.length; i++) {
+                        for (let i = 0; i < block.arguments.length; i++) {
                             processPotentialIdentifier(block.arguments, i);
                         }
                         break;
@@ -579,7 +577,7 @@
                         block = processIdentifierBlock(block);
                         break;
                     case 'TemplateLiteral':
-                        for (i = 0; i < block.expressions.length; i++) {
+                        for (let i = 0; i < block.expressions.length; i++) {
                             processPotentialIdentifier(block.expressions, i);
                         }
                         break;
@@ -615,6 +613,8 @@
                  *  supplied block unmodified.
                  */
                 function processIdentifierBlock(block) {
+                    // TODO: If we are going to allow context to not throw an error
+                    //  in cases such as typeof we will need to
                     if (validateIdentifier(block)) {
                         // Generates context.call(this, <block.name>)
                         block = {
@@ -645,11 +645,11 @@
                  *  an error if the identifier is illegal.
                  */
                 function validateIdentifier(block) {
-                    var msg;
                     if (module.exports.VALID_GLOBALS.indexOf(block.name) > -1) {
                         return false;
                     } else if (module.exports.ILLEGAL_GLOBALS.indexOf(block.name) > -1) {
-                        msg = errorMessage('use of "' + block.name + '" is illegal', block);
+                        let msg = `use of "${block.name}" is illegal`;
+                        msg = errorMessage(msg, block);
                         throw new Error(msg);
                     } else {
                         return true;
@@ -662,9 +662,7 @@
         function errorMessage(msg, block) {
             var pos;
             if (block.loc) {
-                pos = '\nLine: %s. Column: %s'
-                    .replace('%s', block.loc.start.line)
-                    .replace('%s', block.loc.start.column);
+                pos = `\nLine: ${block.loc.start.line}. Column: ${block.loc.start.column}`;
             } else {
                 pos = '';
             }
@@ -676,6 +674,7 @@
             return val && typeof val === 'object';
         }
 
+        /** Called to perform custom processing of a block. */
         function customProcess(block, config, environment, locals) {
             if (options.custom && typeof options.custom === 'function') {
                 return options.custom(block, config, environment, locals);

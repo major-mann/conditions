@@ -1,3 +1,4 @@
 {
+    "extends": "../.jshintrc",
     "maxlen": 200
 }

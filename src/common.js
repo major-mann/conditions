@@ -14,7 +14,7 @@
 
     /** A slightly more advanced typeof */
     function typeOf(val) {
-        var vt = typeof val;
+        const vt = typeof val;
         if (vt === 'object') {
             if (Array.isArray(val)) {
                 return 'array';
@@ -38,12 +38,8 @@
      *  from the parser, and the functions should work on which ever object is supplied.
      */
     function clone(val, history, results) {
-        var vt = typeOf(val),
-            resProto,
-            proto,
-            res,
-            idx,
-            i;
+        const vt = typeOf(val);
+        var resProto, proto, res, idx, i;
         if (!Array.isArray(history)) {
             history = [];
             results = [];
@@ -86,7 +82,7 @@
          *  and cloning the value when it is available
          */
         function copyProp(src, dest, name) {
-            var def = Object.getOwnPropertyDescriptor(src, name);
+            const def = Object.getOwnPropertyDescriptor(src, name);
             if (def.hasOwnProperty('value')) {
                 def.value = clone(def.value, history, results);
             }

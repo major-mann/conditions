@@ -15,8 +15,8 @@
         locals: false
     };
 
-    // Load the parser.
-    var parser = require('./parser'),
+    // Dependencies
+    const parser = require('./parser'),
         // TODO: Replace with common once extend function is written
         lodash = require('lodash'),
         common = require('./common.js');
@@ -49,12 +49,9 @@
     function process(str, loader, options) {
         var imports;
         return new Promise(function (resolve, reject) {
-            var config;
-
             if (typeof loader !== 'function') {
                 throw new Error('loader MUST be a function');
             }
-
             if (options && typeof options === 'object') {
                 options = lodash.extend({}, OPTIONS_DEFAULT, options);
             } else {
@@ -64,7 +61,7 @@
 
             imports = [];
             try {
-                config = parser(str, options);
+                let config = parser(str, options);
                 Promise.all(imports)
                     .then(function () { resolve(config); })
                     .catch(reject);
@@ -100,7 +97,9 @@
                 }
             }
 
-            /** Processes the return value from the loader */
+            /**
+             * Processes the return value from the loader.
+             */
             function processLoaderResult(data) {
                 var env, opts;
                 if (typeof data !== 'string') {
@@ -143,7 +142,7 @@
          * @param {string} name The name of the additional property to assign.
          */
         function assignAdditional(name, location) {
-            var isFunc = typeof options[name] === 'function';
+            const isFunc = typeof options[name] === 'function';
             if (isFunc) {
                 return !!options[name](location);
             } else {

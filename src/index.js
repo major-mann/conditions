@@ -8,7 +8,7 @@
     module.exports.extend = require('./levels.js');
 
     // In a browser context, bind to the window.
-    if (process.title === 'browser') {
+    if (process.title === 'browser' && typeof window !== 'undefined') {
         window.conditions = module.exports;
     }
 }());
