@@ -15,10 +15,13 @@ describe('build tests', function () {
 
             // We do this since the library exposes itself onto window
             global.window = {};
+            global.XMLHttpRequest = function () { return { open: () => {} }; };
+            global.location = {};
 
             require('../dist/conditions.js');
             lib = global.window.conditions;
 
+            // TODO: Why would this be failing? Says function?
             expect(lib).toEqual(jasmine.any(Object));
 
             expect(lib.parse).toEqual(jasmine.any(Function));

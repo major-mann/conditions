@@ -1,5 +1,8 @@
 module.exports = function(grunt) {
     'use strict';
+
+    // TODO: Need to add a babel step to go from ES6 to ES5 before uglify.
+
     grunt.initConfig({
         jshint: {
             src: ['src/**/*.js'],
@@ -21,6 +24,13 @@ module.exports = function(grunt) {
         },
         browserify: {
             main: {
+                options: {
+                    transform: [
+                        ['babelify', {
+                            presets: ['es2015']
+                        }]
+                    ],
+                },
                 files: {
                     'dist/conditions.js': ['src/index.js']
                 }

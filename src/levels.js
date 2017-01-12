@@ -66,6 +66,7 @@
             if (converted) {
                 return converted;
             }
+
             bproto = Object.getPrototypeOf(base);
             proto = Object.create(base);
             result = Object.create(proto);
@@ -113,6 +114,13 @@
             //  locals in the final object.
             Object.keys(base).filter(unprocessed).forEach(reverseProcess);
 
+            // Note: This allows us to do things like Object.keys and get a more expected
+            //  result.
+            result = new Proxy(result, {
+                ownKeys: allKeys,
+                getOwnPropertyDescriptor: getDeepPropertyDescriptor
+            });
+
             return result;
 
             function process(key) {
@@ -127,6 +135,8 @@
                         }
                         // We need this def to be written onto the prototype so it is
                         //  not listed as a property of result
+                        // TODO: With allKeys it is listed now... How to make sure it is not...
+                        //      NO... it is not... but showing from proto!?!?
                         res = proto;
                         def.writable = true;
                         def.enumerable = false;
@@ -324,6 +334,41 @@
             } else {
                 return false;
             }
+        }
+    }
+
+    /** Used to retrieve every public key on an object and its prototype chain */
+    function allKeys(obj) {
+        var prop, res = [];
+        for (prop in obj) { // jshint ignore:line
+            res.push(prop);
+        }
+        return res;
+    }
+
+    /** Looks up a property descriptor all the way up the objects prototype chain */
+    function getDeepPropertyDescriptor(obj, prop) {
+        // TODO: If we have a property in the prototype, and a non-enumerable hidden property
+        var proto, res = Object.getOwnPropertyDescriptor(obj, prop);
+        proto = Object.getPrototypeOf(obj);
+        // Check for hidden properties
+        if (isPossibleCloak(res)) {
+            if (prop in proto) {
+                return undefined;
+            }
+        }
+        if (!res) {
+            if (proto) {
+                res = getDeepPropertyDescriptor(proto, prop);
+            }
+        }
+        return res;
+
+        function isPossibleCloak(desc) {
+            return desc &&
+                desc.hasOwnProperty('value') &&
+                desc.value === undefined &&
+                desc.enumerable === false;
         }
     }
 

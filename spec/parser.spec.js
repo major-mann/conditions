@@ -54,8 +54,7 @@ describe('configuration parser', function () {
             var val = parse(data('object')),
                 proto = Object.getPrototypeOf(val);
 
-            expect(proto.hasOwnProperty('$environment')).toBe(true);
-            expect(proto.hasOwnProperty('$locals')).toBe(true);
+            expect(Object.getOwnPropertySymbols(proto).length).toBe(2);
 
             parse.PROPERTY_PROTOTYPE_LOCALS = undefined;
             parse.PROPERTY_PROTOTYPE_ENVIRONMENT = undefined;
@@ -63,8 +62,7 @@ describe('configuration parser', function () {
             val = parse(data('object'));
             proto = Object.getPrototypeOf(val);
 
-            expect(proto.hasOwnProperty('$environment')).toBe(false);
-            expect(proto.hasOwnProperty('$locals')).toBe(false);
+            expect(Object.getOwnPropertySymbols(proto).length).toBe(0);
         });
     });
 

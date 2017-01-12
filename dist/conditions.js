@@ -37612,6 +37612,10 @@ function extend() {
 }
 
 },{}],59:[function(require,module,exports){
+'use strict';
+
+var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
+
 /**
  * @module Common module. Holds commonly used code.
  * @param {object} exports The object to expose the public API on.
@@ -37628,7 +37632,7 @@ function extend() {
 
     /** A slightly more advanced typeof */
     function typeOf(val) {
-        const vt = typeof val;
+        var vt = typeof val === 'undefined' ? 'undefined' : _typeof(val);
         if (vt === 'object') {
             if (Array.isArray(val)) {
                 return 'array';
@@ -37652,7 +37656,7 @@ function extend() {
      *  from the parser, and the functions should work on which ever object is supplied.
      */
     function clone(val, history, results) {
-        const vt = typeOf(val);
+        var vt = typeOf(val);
         var resProto, proto, res, idx, i;
         if (!Array.isArray(history)) {
             history = [];
@@ -37696,7 +37700,7 @@ function extend() {
          *  and cloning the value when it is available
          */
         function copyProp(src, dest, name) {
-            const def = Object.getOwnPropertyDescriptor(src, name);
+            var def = Object.getOwnPropertyDescriptor(src, name);
             if (def.hasOwnProperty('value')) {
                 def.value = clone(def.value, history, results);
             }
@@ -37722,7 +37726,7 @@ function extend() {
 
     /** Simple non-null object check */
     function isObject(val) {
-        return !!val && typeof val === 'object';
+        return !!val && (typeof val === 'undefined' ? 'undefined' : _typeof(val)) === 'object';
     }
 
     /** Returns true if the supplied string starts with the specified value. */
@@ -37733,11 +37737,14 @@ function extend() {
             return false;
         }
     }
-
-}(module.exports));
+})(module.exports);
 
 },{}],60:[function(require,module,exports){
 (function (process){
+'use strict';
+
+var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
+
 /**
  * The file loader module provides file loading functionality with a common API targeting browser
  *  and node processes.
@@ -37748,11 +37755,11 @@ function extend() {
     module.exports = load;
 
     // Constants
-    const HTTP_MATCH = /^https?:\/\//i,
+    var HTTP_MATCH = /^https?:\/\//i,
         FILE_MATCH = /^file:\/\//i;
 
     // Dependencies
-    const loader = require('./loader.js'),
+    var loader = require('./loader.js'),
         levels = require('./levels.js'),
         http = require('http'),
         path = require('path'),
@@ -37770,7 +37777,7 @@ function extend() {
         var domain, base, suffix, res, args, lvls, i;
 
         options = arguments[arguments.length - 1];
-        if (!options || typeof options !== 'object') {
+        if (!options || (typeof options === 'undefined' ? 'undefined' : _typeof(options)) !== 'object') {
             options = {};
         }
 
@@ -37788,15 +37795,15 @@ function extend() {
             args[i].shift();
         }
         if (args.length) {
-            res = processLocation(args[0])
-                .then(addLevel);
+            res = processLocation(args[0]).then(addLevel);
             for (i = 1; i < args.length; i++) {
                 if (args[i]) {
-                    res = res.then(doProcessLocation(args[i]))
-                        .then(addLevel);
+                    res = res.then(doProcessLocation(args[i])).then(addLevel);
                 }
             }
-            res = res.then(function () { return lvls; }).then(combineLevels);
+            res = res.then(function () {
+                return lvls;
+            }).then(combineLevels);
         } else {
             res = Promise.resolve();
         }
@@ -37819,9 +37826,7 @@ function extend() {
         }
 
         function processLocation(location) {
-            return loadFile(location, true)
-                .then(processData)
-                .catch(onError);
+            return loadFile(location, true).then(processData).catch(onError);
 
             function onError(err) {
                 if (load.warnOnError) {
@@ -37873,7 +37878,7 @@ function extend() {
                     return loadFs(location);
                 }
             } else {
-                let pth = path.join(base, location);
+                var pth = path.join(base, location);
                 pth = domain + pth + suffix;
                 if (HTTP_MATCH.test(pth)) {
                     return loadHttp(pth);
@@ -37886,7 +37891,7 @@ function extend() {
             function loadFs(location) {
                 // We need to do this (wrap require) so no attempt is made to bundle fs by
                 //  browserify
-                const fs = (require)('fs');
+                var fs = require('fs');
 
                 return new Promise(function (resolve, reject) {
                     fs.readFile(location, { encoding: 'utf8' }, onFileRead);
@@ -37906,7 +37911,7 @@ function extend() {
             function loadHttp(location) {
                 return new Promise(function (resolve, reject) {
                     // Make the HTTP request
-                    const req = http.get(location, onResponse);
+                    var req = http.get(location, onResponse);
                     // Ensure we catch any errors
                     req.on('error', onError);
 
@@ -37974,12 +37979,13 @@ function extend() {
             }
         }
     }
-
-}(module));
+})(module);
 
 }).call(this,require('_process'))
 },{"./levels.js":62,"./loader.js":63,"_process":25,"fs":4,"http":49,"path":23,"url":55}],61:[function(require,module,exports){
 (function (process){
+'use strict';
+
 /** The main entry point into the module */
 (function conditionsIndexModule() {
     'use strict';
@@ -37993,10 +37999,14 @@ function extend() {
     if (process.title === 'browser' && typeof window !== 'undefined') {
         window.conditions = module.exports;
     }
-}());
+})();
 
 }).call(this,require('_process'))
 },{"./file-loader.js":60,"./levels.js":62,"./loader.js":63,"./parser.js":64,"_process":25}],62:[function(require,module,exports){
+'use strict';
+
+var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
+
 /**
  * @module Levels The levels module is responsible for loading config files, and extending them
  *  with others. This is useful when wanting to either a base configuration that can
@@ -38009,7 +38019,7 @@ function extend() {
     module.exports.PROPERTY_COMMAND_NAME = '$';
     module.exports.COMMAND_CHECK = defaultCommandCheck;
 
-    const common = require('./common.js'),
+    var common = require('./common.js'),
         parser = require('./parser.js'),
         lodash = require('lodash');
 
@@ -38024,7 +38034,8 @@ function extend() {
      *  * protectStructure - Whether to make properties non-configurable
      */
     function load(config, levels, options) {
-        var i, result,
+        var i,
+            result,
             locals = new WeakMap(),
             locsArr = [],
             envs = new WeakMap(),
@@ -38065,6 +38076,7 @@ function extend() {
             if (converted) {
                 return converted;
             }
+
             bproto = Object.getPrototypeOf(base);
             proto = Object.create(base);
             result = Object.create(proto);
@@ -38112,10 +38124,17 @@ function extend() {
             //  locals in the final object.
             Object.keys(base).filter(unprocessed).forEach(reverseProcess);
 
+            // Note: This allows us to do things like Object.keys and get a more expected
+            //  result.
+            result = new Proxy(result, {
+                ownKeys: allKeys,
+                getOwnPropertyDescriptor: getDeepPropertyDescriptor
+            });
+
             return result;
 
             function process(key) {
-                const def = Object.getOwnPropertyDescriptor(extend, key);
+                var def = Object.getOwnPropertyDescriptor(extend, key);
                 var res = result;
                 if (def.hasOwnProperty('value')) {
                     // Undefined indicates property removal.
@@ -38126,6 +38145,8 @@ function extend() {
                         }
                         // We need this def to be written onto the prototype so it is
                         //  not listed as a property of result
+                        // TODO: With allKeys it is listed now... How to make sure it is not...
+                        //      NO... it is not... but showing from proto!?!?
                         res = proto;
                         def.writable = true;
                         def.enumerable = false;
@@ -38220,8 +38241,7 @@ function extend() {
                         }
                         break;
                     default:
-                        console.warn('Unrecognized configuration array action "' +
-                            command.action + '"');
+                        console.warn('Unrecognized configuration array action "' + command.action + '"');
                         break;
                 }
             }
@@ -38252,7 +38272,7 @@ function extend() {
 
         function processLocals(locs) {
             var res;
-            if (locs && typeof locs === 'object') {
+            if (locs && (typeof locs === 'undefined' ? 'undefined' : _typeof(locs)) === 'object') {
                 res = locals.get(locs);
                 if (!res) {
                     res = Object.assign({}, locs);
@@ -38268,7 +38288,7 @@ function extend() {
 
         function processEnvironment(env) {
             var res;
-            if (env && typeof env === 'object') {
+            if (env && (typeof env === 'undefined' ? 'undefined' : _typeof(env)) === 'object') {
                 res = envs.get(env);
                 if (!res) {
                     res = Object.assign({}, env);
@@ -38326,9 +38346,47 @@ function extend() {
         }
     }
 
+    /** Used to retrieve every public key on an object and its prototype chain */
+    function allKeys(obj) {
+        var prop,
+            res = [];
+        for (prop in obj) {
+            // jshint ignore:line
+            res.push(prop);
+        }
+        return res;
+    }
+
+    /** Looks up a property descriptor all the way up the objects prototype chain */
+    function getDeepPropertyDescriptor(obj, prop) {
+        // TODO: If we have a property in the prototype, and a non-enumerable hidden property
+        var proto,
+            res = Object.getOwnPropertyDescriptor(obj, prop);
+        proto = Object.getPrototypeOf(obj);
+        // Check for hidden properties
+        if (isPossibleCloak(res)) {
+            if (prop in proto) {
+                return undefined;
+            }
+        }
+        if (!res) {
+            if (proto) {
+                res = getDeepPropertyDescriptor(proto, prop);
+            }
+        }
+        return res;
+
+        function isPossibleCloak(desc) {
+            return desc && desc.hasOwnProperty('value') && desc.value === undefined && desc.enumerable === false;
+        }
+    }
 })(module);
 
 },{"./common.js":59,"./parser.js":64,"lodash":22}],63:[function(require,module,exports){
+'use strict';
+
+var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
+
 /**
  * @module loader The loader module is responsible for providing a method of updating all loader
  *  references within a config file (according to the supplied prefix, or the default when none
@@ -38347,9 +38405,10 @@ function extend() {
     };
 
     // Dependencies
-    const parser = require('./parser'),
-        // TODO: Replace with common once extend function is written
-        lodash = require('lodash'),
+    var parser = require('./parser'),
+
+    // TODO: Replace with common once extend function is written
+    lodash = require('lodash'),
         common = require('./common.js');
 
     /**
@@ -38383,7 +38442,7 @@ function extend() {
             if (typeof loader !== 'function') {
                 throw new Error('loader MUST be a function');
             }
-            if (options && typeof options === 'object') {
+            if (options && (typeof options === 'undefined' ? 'undefined' : _typeof(options)) === 'object') {
                 options = lodash.extend({}, OPTIONS_DEFAULT, options);
             } else {
                 options = lodash.extend({}, OPTIONS_DEFAULT);
@@ -38392,10 +38451,12 @@ function extend() {
 
             imports = [];
             try {
-                let config = parser(str, options);
-                Promise.all(imports)
-                    .then(function () { resolve(config); })
-                    .catch(reject);
+                (function () {
+                    var config = parser(str, options);
+                    Promise.all(imports).then(function () {
+                        resolve(config);
+                    }).catch(reject);
+                })();
             } catch (ex) {
                 reject(ex);
             }
@@ -38449,7 +38510,7 @@ function extend() {
                 }
 
                 lodash.extend(env, environment);
-                if (options.environment && typeof options.environment === 'object') {
+                if (options.environment && _typeof(options.environment) === 'object') {
                     lodash.extend(env, environment, options.environment);
                 }
 
@@ -38460,10 +38521,9 @@ function extend() {
                     protectStructure: options.protectStructure,
                     custom: handleCustomExpression
                 };
-                return process(data, loader, opts)
-                    .then(function (cfg) {
-                        imported = cfg;
-                    });
+                return process(data, loader, opts).then(function (cfg) {
+                    imported = cfg;
+                });
             }
         }
 
@@ -38473,7 +38533,7 @@ function extend() {
          * @param {string} name The name of the additional property to assign.
          */
         function assignAdditional(name, location) {
-            const isFunc = typeof options[name] === 'function';
+            var isFunc = typeof options[name] === 'function';
             if (isFunc) {
                 return !!options[name](location);
             } else {
@@ -38481,9 +38541,13 @@ function extend() {
             }
         }
     }
-}(module));
+})(module);
 
 },{"./common.js":59,"./parser":64,"lodash":22}],64:[function(require,module,exports){
+'use strict';
+
+var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
+
 /**
  * @module Parser module. This module is responsible for parsing the text into an config object
  *  which can then be read by the consumer.
@@ -38492,6 +38556,7 @@ function extend() {
     'use strict';
 
     // Public API
+
     module.exports = parse;
     // Constants
     module.exports.PROPERTY_ID = 'id'; // This identifies the name of the id property when parsing.
@@ -38499,18 +38564,15 @@ function extend() {
     module.exports.PROPERTY_PROTOTYPE_ENVIRONMENT = Symbol('$environment');
     module.exports.PROPERTY_PROTOTYPE_LOCALS = Symbol('$locals');
     module.exports.PROPERTY_BASE_NAME = 'base';
-    module.exports.VALID_GLOBALS = ['Infinity', 'NaN', 'undefined', 'Object', 'Number', 'String',
-        'RegExp', 'Boolean', 'Array', 'Error', 'EvalError', 'InternalError', 'RangeError',
-        'ReferenceError', 'SyntaxError', 'TypeError', 'URIError', 'Math', 'Date', 'isFinite',
-        'isNaN', 'parseFloat', 'parseInt', 'decodeURI', 'decodeURIComponent', 'encodeURI',
-        'encodeURIComponent', 'escape', 'unescape'];
+    module.exports.VALID_GLOBALS = ['Infinity', 'NaN', 'undefined', 'Object', 'Number', 'String', 'RegExp', 'Boolean', 'Array', 'Error', 'EvalError', 'InternalError', 'RangeError', 'ReferenceError', 'SyntaxError', 'TypeError', 'URIError', 'Math', 'Date', 'isFinite', 'isNaN', 'parseFloat', 'parseInt', 'decodeURI', 'decodeURIComponent', 'encodeURI', 'encodeURIComponent', 'escape', 'unescape'];
     module.exports.ILLEGAL_GLOBALS = ['eval', 'Function'];
 
     // Dependencies
-    const esprima = require('esprima'),
+    var esprima = require('esprima'),
         escodegen = require('escodegen'),
-        // TODO: Replace with common extend once it is written
-        lodash = require('lodash');
+
+    // TODO: Replace with common extend once it is written
+    lodash = require('lodash');
 
     /**
     * Parses the supplied data, attempting to build up a config object.
@@ -38526,7 +38588,9 @@ function extend() {
     * @throws {error} When str is not a string.
     */
     function parse(str, options) {
-        var code, config, locals = { };
+        var code,
+            config,
+            locals = {};
 
         // Ensure the data is valid
         if (typeof str !== 'string') {
@@ -38543,7 +38607,7 @@ function extend() {
 
         // Make sure environment is an object
         if (!isObject(options.environment)) {
-            options.environment = { };
+            options.environment = {};
         }
 
         // Wrap to force expression
@@ -38565,8 +38629,7 @@ function extend() {
             case 'ArrayExpression':
                 return parseArray(code, true);
             default:
-                let msg = `configuration MUST have an object or array as the root element. ` +
-                    `Got "${code.type}".`;
+                var msg = 'configuration MUST have an object or array as the root element. ' + ('Got "' + code.type + '".');
                 throw new Error(errorMessage(msg, code));
         }
 
@@ -38633,7 +38696,7 @@ function extend() {
                 func = new Function(['context'], body); // jshint ignore:line
 
                 // Build a function which will give us line and column information.
-                res = function (context) {
+                res = function res(context) {
                     var val, e;
                     try {
                         val = func.call(this, context);
@@ -38648,7 +38711,6 @@ function extend() {
             } else {
                 return block.quasis[0].value.cooked;
             }
-
         }
 
         /**
@@ -38657,7 +38719,7 @@ function extend() {
         * @returns {array} The Array representing the supplied block.
         */
         function parseArray(block, initial) {
-            const arr = [];
+            var arr = [];
             if (initial) {
                 config = arr;
             }
@@ -38707,9 +38769,8 @@ function extend() {
 
             // Parse all the properties
             props = block.properties
-                // This applies the filtered properties to the prototype.
-                .filter(processId)
-                .map(parseProperty);
+            // This applies the filtered properties to the prototype.
+            .filter(processId).map(parseProperty);
 
             // Assign the properties to the object
             props.forEach(assignProp);
@@ -38727,8 +38788,7 @@ function extend() {
                     name = propName(prop.key);
                     if (name === module.exports.PROPERTY_ID && prop.value.type === 'Identifier') {
                         if (locals.hasOwnProperty(prop.value.name)) {
-                            throw new Error(errorMessage('duplicate id "' + prop.value.name + '"',
-                                prop));
+                            throw new Error(errorMessage('duplicate id "' + prop.value.name + '"', prop));
                         } else {
                             locals[prop.value.name] = result;
                         }
@@ -38744,8 +38804,8 @@ function extend() {
                         return true;
                     }
                 } else {
-                    let msg = `unsupported property type "${prop.type}"`;
-                    throw new Error(errorMessage(msg, prop));
+                    var _msg = 'unsupported property type "' + prop.type + '"';
+                    throw new Error(errorMessage(_msg, prop));
                 }
             }
 
@@ -38773,10 +38833,9 @@ function extend() {
                     case 'Identifier':
                         return block.name;
                     default:
-                        let msg = `unable to determine a property name from a ` +
-                            `"${block.type}" block`;
-                        msg = errorMessage(msg, block);
-                        throw new Error(msg);
+                        var _msg2 = 'unable to determine a property name from a ' + ('"' + block.type + '" block');
+                        _msg2 = errorMessage(_msg2, block);
+                        throw new Error(_msg2);
                 }
             }
 
@@ -38830,14 +38889,15 @@ function extend() {
                         value = environment[name];
                     } else if (name === module.exports.PROPERTY_BASE_NAME) {
                         value = proto && proto[prop.name];
-                    } else if (name in this) { // We do this here for precedence
+                    } else if (name in this) {
+                        // We do this here for precedence
                         value = this[name];
                     } else {
                         // TODO: This is invalid if we, for example, have a typeof variable...
                         //  Not sure at this point how to achieve that.
                         // May need to be done by passing an additional parameter to this function
                         //  indcating no error on non-existence,
-                        throw new Error(`identifier named "${name}" has not been declared!`);
+                        throw new Error('identifier named "' + name + '" has not been declared!');
                     }
                     return value;
                 }
@@ -38851,7 +38911,10 @@ function extend() {
         *   given context.
         */
         function parseExpression(oblock) {
-            var body, func, res, block = oblock;
+            var body,
+                func,
+                res,
+                block = oblock;
 
             // Get the possible custom expression function.
             func = customProcess(block, config, options.environment, locals);
@@ -38878,7 +38941,7 @@ function extend() {
             }
 
             // Build a function which will give us line and column information.
-            res = function (context) {
+            res = function res(context) {
                 var val, e;
                 try {
                     val = func.call(this, context);
@@ -38894,15 +38957,14 @@ function extend() {
             /** Ensures blocks are valid */
             function validateBlock(obj) {
                 var keys;
-                if (obj && typeof obj === 'object') {
+                if (obj && (typeof obj === 'undefined' ? 'undefined' : _typeof(obj)) === 'object') {
                     if (obj.type) {
                         if (!blockSupported(obj)) {
-                            let msg = `"${obj.type}" block is illegal in expressions.`;
-                            throw new Error(errorMessage(msg, obj));
+                            var _msg3 = '"' + obj.type + '" block is illegal in expressions.';
+                            throw new Error(errorMessage(_msg3, obj));
                         }
                     }
-                    keys = Object.keys(obj)
-                        .forEach(val);
+                    keys = Object.keys(obj).forEach(val);
                 }
 
                 /** returns the named value from the object */
@@ -38927,7 +38989,7 @@ function extend() {
         * @param {object} block The block to parse
         */
         function parseBlock(block) {
-            const supported = blockSupported(block);
+            var supported = blockSupported(block);
             if (supported) {
                 switch (block.type) {
                     case 'ObjectExpression':
@@ -38952,8 +39014,8 @@ function extend() {
                         throw new Error('Critical error. Invalid program!');
                 }
             } else {
-                let msg = `blocks of type "${block.type}'" not supported`;
-                throw new Error(errorMessage(msg, block));
+                var _msg4 = 'blocks of type "' + block.type + '\'" not supported';
+                throw new Error(errorMessage(_msg4, block));
             }
         }
 
@@ -39008,8 +39070,8 @@ function extend() {
 
                 default:
                     // TODO: Should an error be thrown here? Not very forwards compatible...
-                    let msg = `unrecognized block type "${block.type}"`;
-                    throw new Error(errorMessage(msg, block));
+                    var _msg5 = 'unrecognized block type "' + block.type + '"';
+                    throw new Error(errorMessage(_msg5, block));
             }
         }
 
@@ -39027,14 +39089,14 @@ function extend() {
 
             /** Processes a block for potential identifiers. */
             function processBlock(block) {
-                switch(block.type) {
+                switch (block.type) {
                     case 'ConditionalExpression':
                         processBlock(block.test);
                         processBlock(block.consequent);
                         processBlock(block.alternate);
                         break;
                     case 'ObjectExpression':
-                        for (let i = 0; i < block.properties.length; i++) {
+                        for (var i = 0; i < block.properties.length; i++) {
                             processPotentialIdentifier(block.properties[i], 'value');
                         }
                         break;
@@ -39046,14 +39108,14 @@ function extend() {
                         processPotentialIdentifier(block, 'object');
                         break;
                     case 'ArrayExpression':
-                        for (let i = 0; i < block.elements.length; i++) {
-                            processPotentialIdentifier(block.elements, i);
+                        for (var _i = 0; _i < block.elements.length; _i++) {
+                            processPotentialIdentifier(block.elements, _i);
                         }
                         break;
                     case 'CallExpression':
                         processPotentialIdentifier(block, 'callee');
-                        for (let i = 0; i < block.arguments.length; i++) {
-                            processPotentialIdentifier(block.arguments, i);
+                        for (var _i2 = 0; _i2 < block.arguments.length; _i2++) {
+                            processPotentialIdentifier(block.arguments, _i2);
                         }
                         break;
                     case 'UnaryExpression':
@@ -39063,8 +39125,8 @@ function extend() {
                         block = processIdentifierBlock(block);
                         break;
                     case 'TemplateLiteral':
-                        for (let i = 0; i < block.expressions.length; i++) {
-                            processPotentialIdentifier(block.expressions, i);
+                        for (var _i3 = 0; _i3 < block.expressions.length; _i3++) {
+                            processPotentialIdentifier(block.expressions, _i3);
                         }
                         break;
                     case 'ThisExpression':
@@ -39117,10 +39179,7 @@ function extend() {
                                     name: 'call'
                                 }
                             },
-                            arguments: [
-                                { type: 'ThisExpression' },
-                                { type: 'Literal', value: block.name }
-                            ]
+                            arguments: [{ type: 'ThisExpression' }, { type: 'Literal', value: block.name }]
                         };
                     }
                     return block;
@@ -39134,9 +39193,9 @@ function extend() {
                     if (module.exports.VALID_GLOBALS.indexOf(block.name) > -1) {
                         return false;
                     } else if (module.exports.ILLEGAL_GLOBALS.indexOf(block.name) > -1) {
-                        let msg = `use of "${block.name}" is illegal`;
-                        msg = errorMessage(msg, block);
-                        throw new Error(msg);
+                        var _msg6 = 'use of "' + block.name + '" is illegal';
+                        _msg6 = errorMessage(_msg6, block);
+                        throw new Error(_msg6);
                     } else {
                         return true;
                     }
@@ -39148,7 +39207,7 @@ function extend() {
         function errorMessage(msg, block) {
             var pos;
             if (block.loc) {
-                pos = `\nLine: ${block.loc.start.line}. Column: ${block.loc.start.column}`;
+                pos = '\nLine: ' + block.loc.start.line + '. Column: ' + block.loc.start.column;
             } else {
                 pos = '';
             }
@@ -39157,7 +39216,7 @@ function extend() {
 
         /** Simple non-null object check */
         function isObject(val) {
-            return val && typeof val === 'object';
+            return val && (typeof val === 'undefined' ? 'undefined' : _typeof(val)) === 'object';
         }
 
         /** Called to perform custom processing of a block. */
@@ -39169,7 +39228,6 @@ function extend() {
             }
         }
     }
-
-}(module));
+})(module);
 
 },{"escodegen":9,"esprima":11,"lodash":22}]},{},[61]);
