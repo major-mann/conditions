@@ -9,7 +9,7 @@
     module.exports = parse;
     // Constants
     module.exports.PROPERTY_ID = 'id'; // This identifies the name of the id property when parsing.
-    module.exports.PROPERTY_PROTOTYPE_ID = 'id';
+    module.exports.PROPERTY_PROTOTYPE_ID = Symbol('id');
     module.exports.PROPERTY_PROTOTYPE_ENVIRONMENT = Symbol('$environment');
     module.exports.PROPERTY_PROTOTYPE_LOCALS = Symbol('$locals');
     module.exports.PROPERTY_BASE_NAME = 'base';
@@ -191,6 +191,7 @@
         */
         function parseObject(block, initial) {
             var proto = {},
+                idprop,
                 result,
                 props;
 
@@ -228,6 +229,15 @@
             // Assign the properties to the object
             props.forEach(assignProp);
 
+            if (!Object.hasOwnProperty.call(result, module.exports.PROPERTY_ID) && idprop) {
+                Object.defineProperty(result, module.exports.PROPERTY_ID, {
+                    enumerable: true,
+                    value: idprop,
+                    writable: !options.readOnly,
+                    configurable: !options.protectStructure
+                });
+            }
+
             return result;
 
             /**
@@ -253,6 +263,7 @@
                             writable: !options.readOnly,
                             configurable: !options.protectStructure
                         });
+                        idprop = prop.value.name;
                         return false;
                     } else {
                         return true;

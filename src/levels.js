@@ -6,6 +6,8 @@
 (function levelsModule(module) {
     'use strict';
 
+    const PROTO_MARKER = Symbol();
+
     module.exports = load;
     module.exports.PROPERTY_COMMAND_NAME = '$';
     module.exports.COMMAND_CHECK = defaultCommandCheck;
@@ -61,7 +63,7 @@
         }
 
         function objectExtend(base, extend) {
-            var proto, bproto, eproto, result, converted, locs, env, tmp, id;
+            var proto, bproto, eproto, result, presult, converted, locs, env, tmp, id;
             converted = objs.get(base);
             if (converted) {
                 return converted;
@@ -92,6 +94,13 @@
                 }
             }
 
+            Object.defineProperty(proto, PROTO_MARKER, {
+                enumerable: false,
+                value: true,
+                writable: false,
+                configurable: false
+            });
+
             // Add the locals and environment
             Object.defineProperty(proto, parser.PROPERTY_PROTOTYPE_LOCALS, {
                 enumerable: false,
@@ -116,12 +125,22 @@
 
             // Note: This allows us to do things like Object.keys and get a more expected
             //  result.
-            result = new Proxy(result, {
-                ownKeys: allKeys,
-                getOwnPropertyDescriptor: getDeepPropertyDescriptor
+            // Note: We cannot use result directly as there seems to be some issues when traversing
+            //  the prototype chain.
+            presult = new Proxy({}, {
+                ownKeys: () => allKeys(result),
+                getOwnPropertyDescriptor: (t, p) => getDeepPropertyDescriptor(result, p, t),
+                getPrototypeOf: () => Object.getPrototypeOf(result),
+                setPrototypeOf: (t, p) => { Object.setPrototypeOf(result, p); },
+                isExtensible: () => Object.isExtensible(result),
+                preventExtensions: () => Object.preventExtensions(result),
+                defineProperty: (t, p, d) => Object.defineProperty(result, p, d),
+                has: (t, p) => p in result,
+                get: (t, p) => result[p],
+                set: (t, p, v) => result[p] = v,
+                deleteProperty: (t, p) => delete result[p]
             });
-
-            return result;
+            return presult;
 
             function process(key) {
                 const def = Object.getOwnPropertyDescriptor(extend, key);
@@ -339,7 +358,8 @@
 
     /** Used to retrieve every public key on an object and its prototype chain */
     function allKeys(obj) {
-        var prop, res = [];
+        // TODO: Could it be missing from here???
+        var res = [], prop;
         for (prop in obj) { // jshint ignore:line
             res.push(prop);
         }
@@ -347,8 +367,7 @@
     }
 
     /** Looks up a property descriptor all the way up the objects prototype chain */
-    function getDeepPropertyDescriptor(obj, prop) {
-        // TODO: If we have a property in the prototype, and a non-enumerable hidden property
+    function getDeepPropertyDescriptor(obj, prop, target) {
         var proto, res = Object.getOwnPropertyDescriptor(obj, prop);
         proto = Object.getPrototypeOf(obj);
         // Check for hidden properties
@@ -359,7 +378,15 @@
         }
         if (!res) {
             if (proto) {
-                res = getDeepPropertyDescriptor(proto, prop);
+                res = getDeepPropertyDescriptor(proto, prop, target);
+            }
+        }
+
+        // Note: There seems to be a bug in that won't allow you to return a property descriptor
+        //  on a proxy as non-configurable if it does not exist on the target object.
+        if (res && res.configurable === false) {
+            if (!Object.getOwnPropertyDescriptor(target, prop)) {
+                Object.defineProperty(target, prop, res);
             }
         }
         return res;

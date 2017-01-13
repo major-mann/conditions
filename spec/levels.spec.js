@@ -57,7 +57,7 @@ describe('levels', function () {
             expect(result.hasOwnProperty('test')).toBe(false);
         });
         it('should deep extend the properties', function () {
-            var config, ext;
+            var config, ext, keys;
 
             config = {
                 section: {
@@ -97,6 +97,12 @@ describe('levels', function () {
             expect(result.section.subsection.value4).toBe('e');
             expect(result.section2.foo).toBe('bar');
             expect(result.test).toBe(10);
+
+            keys = Object.keys(result.section);
+            expect(keys.length).toBe(3);
+            expect(keys.indexOf('value1') > -1).toBe(true);
+            expect(keys.indexOf('value2') > -1).toBe(true);
+            expect(keys.indexOf('subsection') > -1).toBe(true);
         });
 
         it('should extend an array', function () {
