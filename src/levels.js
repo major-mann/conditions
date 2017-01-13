@@ -63,7 +63,7 @@
         }
 
         function objectExtend(base, extend) {
-            var proto, bproto, eproto, result, presult, converted, locs, env, tmp, id;
+            var proto, bproto, eproto, result, presult, converted, keys, locs, env, tmp, id;
             converted = objs.get(base);
             if (converted) {
                 return converted;
@@ -127,9 +127,10 @@
             //  result.
             // Note: We cannot use result directly as there seems to be some issues when traversing
             //  the prototype chain.
+            keys = () => allKeys(result);
             presult = new Proxy({}, {
-                ownKeys: () => allKeys(result),
-                getOwnPropertyDescriptor: (t, p) => getDeepPropertyDescriptor(result, p, t),
+                ownKeys: keys,
+                getOwnPropertyDescriptor: (t, p) => getDeepPropertyDescriptor(result, p, t, keys()),
                 getPrototypeOf: () => Object.getPrototypeOf(result),
                 setPrototypeOf: (t, p) => { Object.setPrototypeOf(result, p); },
                 isExtensible: () => Object.isExtensible(result),
@@ -137,7 +138,10 @@
                 defineProperty: (t, p, d) => Object.defineProperty(result, p, d),
                 has: (t, p) => p in result,
                 get: (t, p) => result[p],
-                set: (t, p, v) => result[p] = v,
+                set: (t, p, v) => {
+                    result[p] = v;
+                    return true;
+                },
                 deleteProperty: (t, p) => delete result[p]
             });
             return presult;
@@ -154,12 +158,10 @@
                         }
                         // We need this def to be written onto the prototype so it is
                         //  not listed as a property of result
-                        // TODO: With allKeys it is listed now... How to make sure it is not...
-                        //      NO... it is not... but showing from proto!?!?
                         res = proto;
                         def.writable = true;
                         def.enumerable = false;
-                        def.configurable = true;
+                        def.configurable = false;
                     } else {
                         def.configurable = !options.protectStructure;
                         def.writable = !options.readOnly;
@@ -358,16 +360,18 @@
 
     /** Used to retrieve every public key on an object and its prototype chain */
     function allKeys(obj) {
-        // TODO: Could it be missing from here???
-        var res = [], prop;
-        for (prop in obj) { // jshint ignore:line
-            res.push(prop);
+        var res, proto;
+        res = Object.keys(obj);
+        proto = Object.getPrototypeOf(obj);
+        if (proto) {
+            res = res.concat(allKeys(proto));
         }
+        res = res.filter((e, i, arr) => arr.indexOf(e) === i);
         return res;
     }
 
     /** Looks up a property descriptor all the way up the objects prototype chain */
-    function getDeepPropertyDescriptor(obj, prop, target) {
+    function getDeepPropertyDescriptor(obj, prop, target, keys) {
         var proto, res = Object.getOwnPropertyDescriptor(obj, prop);
         proto = Object.getPrototypeOf(obj);
         // Check for hidden properties
@@ -376,10 +380,8 @@
                 return undefined;
             }
         }
-        if (!res) {
-            if (proto) {
-                res = getDeepPropertyDescriptor(proto, prop, target);
-            }
+        if (!res && proto) {
+            res = getDeepPropertyDescriptor(proto, prop, target, keys);
         }
 
         // Note: There seems to be a bug in that won't allow you to return a property descriptor
@@ -389,6 +391,14 @@
                 Object.defineProperty(target, prop, res);
             }
         }
+
+        // Super strange. The props on prototype seem to return enumerable === false. Not sure why
+        //  This is to work around that by explicitly checking the property name against the
+        //  the enumerable list of keys.
+        if (res && !res.enumerable && keys.indexOf(prop) > -1) {
+            res.enumerable = true;
+        }
+
         return res;
 
         function isPossibleCloak(desc) {
