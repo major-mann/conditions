@@ -27,6 +27,20 @@
      *  * protectStructure - Whether to make properties non-configurable
      */
     function load(config, levels, options) {
+
+        // TODO: Want to simplify this substabtially...
+        //  We create a new object (Since we need to be able to overwrite properties)
+        //      We copy locals, environment and id from config
+        //  For each level
+        //      ???
+
+        //      We copy each property...
+        //          What about read only and confurable??
+        //      We process extendable
+        //          We extend on each property
+
+
+
         var i, result,
             locals = new WeakMap(),
             locsArr = [],

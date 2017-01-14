@@ -111,7 +111,6 @@
                     env.source = source;
                 }
                 if (assignAdditional('locals', location)) {
-                    // TODO: Where are these locals from?
                     if (common.isObject(locals)) {
                         lodash.extend(env, locals);
                     }

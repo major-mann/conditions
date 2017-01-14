@@ -9,9 +9,9 @@
     module.exports = parse;
     // Constants
     module.exports.PROPERTY_ID = 'id'; // This identifies the name of the id property when parsing.
-    module.exports.PROPERTY_PROTOTYPE_ID = Symbol('id');
-    module.exports.PROPERTY_PROTOTYPE_ENVIRONMENT = Symbol('$environment');
-    module.exports.PROPERTY_PROTOTYPE_LOCALS = Symbol('$locals');
+    module.exports.PROPERTY_SYMBOL_ID = Symbol('id');
+    module.exports.PROPERTY_SYMBOL_ENVIRONMENT = Symbol('environment');
+    module.exports.PROPERTY_SYMBOL_LOCALS = Symbol('locals');
     module.exports.PROPERTY_BASE_NAME = 'base';
     module.exports.VALID_GLOBALS = ['Infinity', 'NaN', 'undefined', 'Object', 'Number', 'String',
         'RegExp', 'Boolean', 'Array', 'Error', 'EvalError', 'InternalError', 'RangeError',
@@ -35,6 +35,8 @@
     *       * {boolean} protectStructure - True to make object, array and getters non configurable.
     *           Defaults to false.
     *       * {boolean}  readOnly - True to disable any setting of properties. Defaults to false.
+    *       * {boolean} preferPrototype - Defaults to false. Whether to take preference of
+    *           prototype properties over locals and environment.
     *       * {function} custom - A function to call that allows custom expressions functions
     *           to be constructed.
     * @throws {error} When str is not a string.
@@ -190,29 +192,27 @@
         * @param {object} block The block representing the object
         */
         function parseObject(block, initial) {
-            var proto = {},
-                idprop,
+            var idprop,
                 result,
                 props;
 
-            result = Object.create(proto);
-
+            result = {};
             if (initial) {
                 config = result;
             }
 
-            // Add locals to the prototype.
-            if (module.exports.PROPERTY_PROTOTYPE_LOCALS) {
-                Object.defineProperty(proto, module.exports.PROPERTY_PROTOTYPE_LOCALS, {
+            // Add locals via symbol.
+            if (module.exports.PROPERTY_SYMBOL_LOCALS) {
+                Object.defineProperty(result, module.exports.PROPERTY_SYMBOL_LOCALS, {
                     enumerable: false,
                     value: locals,
                     writable: !options.readOnly,
                     configurable: !options.protectStructure
                 });
             }
-            // Add environment variables to the prototype.
-            if (module.exports.PROPERTY_PROTOTYPE_ENVIRONMENT) {
-                Object.defineProperty(proto, module.exports.PROPERTY_PROTOTYPE_ENVIRONMENT, {
+            // Add environment variables via symbol.
+            if (module.exports.PROPERTY_SYMBOL_ENVIRONMENT) {
+                Object.defineProperty(result, module.exports.PROPERTY_SYMBOL_ENVIRONMENT, {
                     enumerable: false,
                     value: options.environment,
                     writable: !options.readOnly,
@@ -229,6 +229,8 @@
             // Assign the properties to the object
             props.forEach(assignProp);
 
+            // We add the named id after everything else, and only if a property named id does not
+            //  exist.
             if (!Object.hasOwnProperty.call(result, module.exports.PROPERTY_ID) && idprop) {
                 Object.defineProperty(result, module.exports.PROPERTY_ID, {
                     enumerable: true,
@@ -246,7 +248,7 @@
              *  not processed in the standard manner.
              */
             function processId(prop) {
-                var name, proto;
+                var name;
                 if (prop.type === 'Property') {
                     name = propName(prop.key);
                     if (name === module.exports.PROPERTY_ID && prop.value.type === 'Identifier') {
@@ -256,9 +258,8 @@
                         } else {
                             locals[prop.value.name] = result;
                         }
-                        proto = Object.getPrototypeOf(result);
-                        Object.defineProperty(proto, module.exports.PROPERTY_PROTOTYPE_ID, {
-                            enumerable: true,
+                        Object.defineProperty(result, module.exports.PROPERTY_SYMBOL_ID, {
+                            enumerable: false,
                             value: prop.value.name,
                             writable: !options.readOnly,
                             configurable: !options.protectStructure
@@ -337,15 +338,18 @@
                 *   i.e. There are no closure values accessed in this
                 *   function.
                 * @param {string} name The variable to retrieve the value of.
+                * @param {boolean} nothrow optional argument to prevent an error if the value
+                *   is not found. This is useful with, for example, the typeof operator.
                 */
-                function context(name) {
+                function context(name, nothrow) {
                     var proto = Object.getPrototypeOf(this),
-                        locals = proto && proto[module.exports.PROPERTY_PROTOTYPE_LOCALS],
-                        environment = proto && proto[module.exports.PROPERTY_PROTOTYPE_ENVIRONMENT],
+                        locals = this[module.exports.PROPERTY_SYMBOL_LOCALS],
+                        environment = this[module.exports.PROPERTY_SYMBOL_ENVIRONMENT],
                         value;
-
-                    if (this.hasOwnProperty(name)) {
-                        // Coming from this object.
+                    // If prototype is prefered check the entire chain for the property
+                    if (options.preferPrototype && name in this) {
+                        value = this[name];
+                    } else if (this.hasOwnProperty(name)) { // Otherwise just the object
                         value = this[name];
                     } else if (isObject(locals) && locals.hasOwnProperty(name)) {
                         // Coming from an object in the config file with an id property.
@@ -356,12 +360,11 @@
                     } else if (name === module.exports.PROPERTY_BASE_NAME) {
                         value = proto && proto[prop.name];
                     } else if (name in this) { // We do this here for precedence
+                        // This allows config to be extended.
                         value = this[name];
+                    } else if (nothrow) { // Things like typeof
+                        value = undefined;
                     } else {
-                        // TODO: This is invalid if we, for example, have a typeof variable...
-                        //  Not sure at this point how to achieve that.
-                        // May need to be done by passing an additional parameter to this function
-                        //  indcating no error on non-existence,
                         throw new Error(`identifier named "${name}" has not been declared!`);
                     }
                     return value;
@@ -616,23 +619,24 @@
 
                 /** Processes the identifier on the supplied block at the supplied property */
                 function processIdentifier(block, property) {
-                    block[property] = processIdentifierBlock(block[property]);
+                    var tof = block.type === 'UnaryExpression' && block.operator === 'typeof';
+                    block[property] = processIdentifierBlock(block[property], tof);
                 }
 
                 /**
                  * Replaces the identifier block if necesary, otherwise just returns the
                  *  supplied block unmodified.
+                 * @param {object} block The AST identifier block to process.
+                 * @param {boolean} typeOf Whether the identifier was part of a type of (This
+                 *   changes the behaviour of unfound properties).
                  */
-                function processIdentifierBlock(block) {
-                    // TODO: If we are going to allow context to not throw an error
-                    //  in cases such as typeof we will need to
+                function processIdentifierBlock(block, typeOf) {
                     if (validateIdentifier(block)) {
-                        // Generates context.call(this, <block.name>)
+                        // Generates context.call(this, <block.name>, typeOf)
                         block = {
                             type: 'CallExpression',
                             callee: {
                                 type: 'MemberExpression',
-                                computed: false,
                                 object: {
                                     type: 'Identifier',
                                     name: 'context'
@@ -644,7 +648,8 @@
                             },
                             arguments: [
                                 { type: 'ThisExpression' },
-                                { type: 'Literal', value: block.name }
+                                { type: 'Literal', value: block.name },
+                                { type: 'Literal', value: !!typeOf }
                             ]
                         };
                     }
