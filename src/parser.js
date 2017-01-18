@@ -24,7 +24,7 @@
     const esprima = require('esprima'),
         escodegen = require('escodegen'),
         // TODO: Replace with common extend once it is written
-        lodash = require('lodash');
+        common = require('./common.js');
 
     /**
     * Parses the supplied data, attempting to build up a config object.
@@ -55,7 +55,7 @@
         }
 
         // Ensure options is an object, and we don't make changes to the supplied data.
-        options = lodash.extend({}, options);
+        options = common.extend({}, options);
 
         // Make sure environment is an object
         if (!isObject(options.environment)) {

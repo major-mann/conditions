@@ -233,13 +233,6 @@ The following commands may be issues:
 
 # Roadmap to V1.0.0
 
-* Allow `parser.PROPERTY_SYMBOL_ENVIRONMENT` and `parser.PROPERTY_SYMBOL_LOCALS` to be set as
-    functions which will filter properties in a similar fashion to loader `options.source` and
-    `options.locals`
-* Allow `parser.PROPERTY_SYMBOL_ENVIRONMENT` and `parser.PROPERTY_SYMBOL_LOCALS` to be
-    overridden in the parser options.
-* Write a custom extend function so lodash can be removed (reducing the overhead of the browserify
-    output)
 * Allow array commands to insert before or after a located value.
 * Move across to mocha + chai testing.
 * Adding travis CI and codecov.io support.
