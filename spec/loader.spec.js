@@ -162,11 +162,13 @@ describe('loader', function () {
             }
         });
         it('should allow a filter function to be defined for "source" which will allow properties to receive the "source" value to be filtered', function (done) {
+            // TODO: Looks like we are passing the source regardless....
             var loadRes = {},
                 config = '{ foo: "hello", bar: $import("bar"), baz: $import("baz") }';
             loader(config, loaderHandler, { source: check })
                 .then(function (config) {
-                    expect(config.bar.test).toBe('object');
+                    var val = config.bar.test;
+                    expect(config.bar.test).toEqual(jasmine.any(Object));
                     expect(function () { return config.baz.test; })
                         .toThrowError(/source.*not.*declared/);
                     done();
@@ -178,7 +180,7 @@ describe('loader', function () {
             }
 
             function loaderHandler() {
-                return '{ test: typeof source }';
+                return '{ test: Object.assign({}, source) }';
             }
         });
         it('should allow a filter function to be defined for "locals" which will allow properties to receive the "locals" values to be filtered', function (done) {
@@ -186,7 +188,7 @@ describe('loader', function () {
                 config = '{ id: main, foo: "hello", bar: $import("bar"), baz: $import("baz") }';
             loader(config, loaderHandler, { locals: check })
                 .then(function (config) {
-                    expect(config.bar.test).toBe('object');
+                    expect(config.bar.test).toEqual(jasmine.any(Object));
                     expect(function () { return config.baz.test; })
                         .toThrowError(/main.*not.*declared/);
                     done();
@@ -198,7 +200,7 @@ describe('loader', function () {
             }
 
             function loaderHandler() {
-                return '{ test: typeof main }';
+                return '{ test: Object.assign({}, main) }';
             }
         });
     });

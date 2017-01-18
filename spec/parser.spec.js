@@ -50,19 +50,16 @@ describe('configuration parser', function () {
             var val = parse(data('array'));
             expect(val).toEqual(jasmine.any(Array));
         });
-        it('should not create the $environment or $locals values on the prototype when they are not defined on the parse function', function () {
-            var val = parse(data('object')),
-                proto = Object.getPrototypeOf(val);
+        it('should not create the $environment or $locals values on the value when they are not defined on the parse function', function () {
+            var val = parse(data('object'));
 
-            expect(Object.getOwnPropertySymbols(proto).length).toBe(2);
+            expect(Object.getOwnPropertySymbols(val).length).toBe(2);
 
-            parse.PROPERTY_PROTOTYPE_LOCALS = undefined;
-            parse.PROPERTY_PROTOTYPE_ENVIRONMENT = undefined;
+            parse.PROPERTY_SYMBOL_LOCALS = undefined;
+            parse.PROPERTY_SYMBOL_ENVIRONMENT = undefined;
 
             val = parse(data('object'));
-            proto = Object.getPrototypeOf(val);
-
-            expect(Object.getOwnPropertySymbols(proto).length).toBe(0);
+            expect(Object.getOwnPropertySymbols(val).length).toBe(0);
         });
     });
 
