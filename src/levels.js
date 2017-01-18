@@ -6,7 +6,7 @@
 (function levelsModule(module) {
     'use strict';
 
-    module.exports = load2;
+    module.exports = load;
     module.exports.PROPERTY_COMMAND_NAME = '$';
     module.exports.COMMAND_CHECK = defaultCommandCheck;
 
@@ -23,7 +23,7 @@
      *  * readOnly - Whether all properties will be set to readOnly
      *  * protectStructure - Whether to make properties non-configurable
      */
-    function load2(config, levels, options) {
+    function load(config, levels, options) {
         var locals, locsArr, envs, envsArr, objs, updates, i, result;
 
         options = options || {};
@@ -44,9 +44,7 @@
         }
         return result;
 
-        /**
-         * Processes an individual level.
-         */
+        /** Processes an individual level. */
         function processLevel(config, level) {
             if (isObj(config) && isObj(level)) {
                 return objectExtend(config, level);
@@ -55,7 +53,7 @@
             } else if (isObj(level)) {
                 return processLevel({}, level);
             } else if (Array.isArray(level)) {
-                return level.map(e => load2({}, e, options));
+                return level.map(e => load({}, e, options));
             } else {
                 return level;
             }

@@ -232,22 +232,15 @@ The following commands may be issues:
 * **clear** - Removed all items from the array.
 
 # Roadmap to V1.0.0
-* Need to expose properties directly on extended config in order to be able to use things like
-    `Object.keys`
-* Change tracking, reset and commit.
-* Event emitters for config changes. These should include checking for changes to expression
-    properties.
-* Allow `parser.PROPERTY_PROTOTYPE_ENVIRONMENT` and `parser.PROPERTY_PROTOTYPE_LOCALS` to be set as
+
+* Allow `parser.PROPERTY_SYMBOL_ENVIRONMENT` and `parser.PROPERTY_SYMBOL_LOCALS` to be set as
     functions which will filter properties in a similar fashion to loader `options.source` and
     `options.locals`
-* Allow `parser.PROPERTY_PROTOTYPE_ENVIRONMENT` and `parser.PROPERTY_PROTOTYPE_LOCALS` to be
+* Allow `parser.PROPERTY_SYMBOL_ENVIRONMENT` and `parser.PROPERTY_SYMBOL_LOCALS` to be
     overridden in the parser options.
 * Write a custom extend function so lodash can be removed (reducing the overhead of the browserify
     output)
 * Allow array commands to insert before or after a located value.
-* Move to ES6
-    * Modify code to include language features such as const, templated strings and arrow functions.
-    * Changing $locals and $environment to symbols and switch their associated constants.
 * Move across to mocha + chai testing.
 * Adding travis CI and codecov.io support.
 * Switch to eslint
