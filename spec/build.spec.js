@@ -21,8 +21,7 @@ describe('build tests', function () {
             require('../dist/conditions.js');
             lib = global.window.conditions;
 
-            // TODO: Why would this be failing? Says function?
-            expect(lib).toEqual(jasmine.any(Object));
+            expect(lib).toEqual(jasmine.any(Function));
 
             expect(lib.parse).toEqual(jasmine.any(Function));
             expect(lib.loader).toEqual(jasmine.any(Function));

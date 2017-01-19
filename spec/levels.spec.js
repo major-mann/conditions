@@ -54,7 +54,8 @@ describe('levels', function () {
             result = extend(config, [ext]);
             expect(result.foo).toBe('bar');
             expect(result.hello).toBe('world');
-            expect(result.hasOwnProperty('test')).toBe(false);
+            expect(Object.keys(result).indexOf('test') === -1).toBe(true);
+            expect(result.test).toBe(undefined);
         });
         it('should deep extend the properties', function () {
             var config, ext, keys;

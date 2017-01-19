@@ -18,7 +18,6 @@
     // Dependencies
     const parser = require('./parser'),
         // TODO: Replace with common once extend function is written
-        lodash = require('lodash'),
         common = require('./common.js');
 
     /**
@@ -53,9 +52,9 @@
                 throw new Error('loader MUST be a function');
             }
             if (options && typeof options === 'object') {
-                options = lodash.extend({}, OPTIONS_DEFAULT, options);
+                options = common.extend({}, OPTIONS_DEFAULT, options);
             } else {
-                options = lodash.extend({}, OPTIONS_DEFAULT);
+                options = common.extend({}, OPTIONS_DEFAULT);
             }
             options.custom = handleCustomExpression;
 
@@ -111,15 +110,14 @@
                     env.source = source;
                 }
                 if (assignAdditional('locals', location)) {
-                    // TODO: Where are these locals from?
                     if (common.isObject(locals)) {
-                        lodash.extend(env, locals);
+                        common.extend(env, locals);
                     }
                 }
 
-                lodash.extend(env, environment);
+                common.extend(env, environment);
                 if (options.environment && typeof options.environment === 'object') {
-                    lodash.extend(env, environment, options.environment);
+                    common.extend(env, environment, options.environment);
                 }
 
                 opts = {

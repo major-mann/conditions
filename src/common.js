@@ -11,6 +11,22 @@
     exports.clone = clone;
     exports.isObject = isObject;
     exports.startsWith = startsWith;
+    exports.extend = extend;
+
+    /** Copies the properties in a shallow fashion */
+    function extend(obj) {
+        var prop, i;
+        for (i = 1; i < arguments.length; i++) {
+            if (typeOf(arguments[i]) === 'object') {
+                for (prop in arguments[i]) {
+                    if (arguments[i].hasOwnProperty(prop)) {
+                        obj[prop] = arguments[i][prop];
+                    }
+                }
+            }
+        }
+        return obj;
+    }
 
     /** A slightly more advanced typeof */
     function typeOf(val) {

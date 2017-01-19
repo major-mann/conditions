@@ -6,15 +6,12 @@
 (function levelsModule(module) {
     'use strict';
 
-    const PROTO_MARKER = Symbol();
-
     module.exports = load;
     module.exports.PROPERTY_COMMAND_NAME = '$';
     module.exports.COMMAND_CHECK = defaultCommandCheck;
 
     const common = require('./common.js'),
-        parser = require('./parser.js'),
-        lodash = require('lodash');
+        parser = require('./parser.js');
 
     /**
      * Applies the extension arguments to the config. This creates a completely new object
@@ -27,66 +24,71 @@
      *  * protectStructure - Whether to make properties non-configurable
      */
     function load(config, levels, options) {
-        var i, result,
-            locals = new WeakMap(),
-            locsArr = [],
-            envs = new WeakMap(),
-            envsArr = [],
-            objs = new WeakMap(),
-            updates = {};
-        options = lodash.extend({}, options);
+        var locals, locsArr, envs, envsArr, objs, updates, i, result, cache;
 
-        // Process all arguments.
-        result = config;
+        options = options || {};
+        locals = new WeakMap();
+        locsArr = [];
+        envs = new WeakMap();
+        envsArr = [];
+        objs = new WeakMap();
+        updates = {};
+
         if (Array.isArray(levels)) {
-            for (i = 0; i < levels.length; i++) {
-                result = extendBase(result, levels[i]);
+            cache = new WeakMap();
+            result = processLevel(config, levels[0]);
+            for (i = 1; i < levels.length; i++) {
+                cache = new WeakMap();
+                result = processLevel(result, levels[i]);
             }
+        } else {
+            result = config;
         }
         return result;
 
-        function extendBase(base, extend) {
-            if (Array.isArray(base) && Array.isArray(extend)) {
-                return arrayExtend(base, extend);
-            } else if (common.isObject(base) && common.isObject(extend)) {
-                return objectExtend(base, extend);
-            } else if (Array.isArray(extend)) {
-                return extend.map(function (item) {
-                    return extendBase({}, item);
-                });
-            } else if (common.isObject(extend)) {
-                return extendBase({}, extend);
+        /** Processes an individual level. */
+        function processLevel(config, level) {
+            if (isObj(config) && isObj(level)) {
+                return objectExtend(config, level);
+            } else if (Array.isArray(config) && Array.isArray(level)) {
+                return arrayExtend(config, level);
+            } else if (isObj(level)) {
+                return processLevel({}, level);
+            } else if (Array.isArray(level)) {
+                return level.map(e => load({}, e, options));
             } else {
-                // Value copy
-                return extend;
+                return level;
+            }
+
+            /**
+             * Checks whether the supplied value is an object that is not
+             *  an array, date or regex.
+             */
+            function isObj(obj) {
+                return common.typeOf(obj) === 'object';
             }
         }
 
         function objectExtend(base, extend) {
-            var proto, bproto, eproto, result, presult, converted, locs, env, tmp, id;
-            converted = objs.get(base);
-            if (converted) {
-                return converted;
-            }
+            var result, cachedResult, extendCachedResult, keys, locals, env, tmp;
 
-            bproto = Object.getPrototypeOf(base);
-            proto = Object.create(base);
-            result = Object.create(proto);
-            objs.set(base, result);
-
-            id = bproto[parser.PROPERTY_PROTOTYPE_ID];
-            if (id) {
-                updateId(id, base, result);
-            }
-            eproto = Object.getPrototypeOf(extend);
-            if (eproto) {
-                id = eproto[parser.PROPERTY_PROTOTYPE_ID];
-                if (id) {
-                    updateId(id, extend, result);
+            cachedResult = cache.get(base);
+            if (cachedResult) {
+                extendCachedResult = cachedResult.get(extend);
+                if (extendCachedResult) {
+                    return extendCachedResult;
                 }
             }
-            locs = processLocals(bproto[parser.PROPERTY_PROTOTYPE_LOCALS]);
-            env = processEnvironment(bproto[parser.PROPERTY_PROTOTYPE_ENVIRONMENT]);
+
+            // Create the result with the base as a prototype
+            result = Object.create({});
+            if (!cachedResult) {
+                extendCachedResult = new WeakMap();
+                cache.set(base, extendCachedResult);
+                extendCachedResult.set(extend, result);
+            }
+            locals = processLocals(base[parser.PROPERTY_SYMBOL_LOCALS]);
+            env = processEnvironment(base[parser.PROPERTY_SYMBOL_ENVIRONMENT]);
             if (env.source) {
                 tmp = objs.get(env.source);
                 if (tmp) {
@@ -94,96 +96,171 @@
                 }
             }
 
-            Object.defineProperty(proto, PROTO_MARKER, {
-                enumerable: false,
-                value: true,
-                writable: false,
-                configurable: false
-            });
+            writeLocalsAndEnvironment(result);
 
-            // Add the locals and environment
-            Object.defineProperty(proto, parser.PROPERTY_PROTOTYPE_LOCALS, {
-                enumerable: false,
-                value: locs,
-                writable: !options.readOnly,
-                configurable: !options.protectStructure
-            });
+            // Update the locals and environment
+            update();
 
-            Object.defineProperty(proto, parser.PROPERTY_PROTOTYPE_ENVIRONMENT, {
-                enumerable: false,
-                value: env,
-                writable: !options.readOnly,
-                configurable: !options.protectStructure
-            });
+            // Now we are ready to process the keys.
+            keys = allKeys(base, extend);
+            keys.forEach(processKey);
+            Object.setPrototypeOf(result, base);
+            return result;
 
-            Object.keys(extend).forEach(process);
-
-            // Note: We process all properties that are not on extend here
-            //  (the function filters) so that we can assign the correct context
-            //  locals in the final object.
-            Object.keys(base).filter(unprocessed).forEach(reverseProcess);
-
-            // Note: This allows us to do things like Object.keys and get a more expected
-            //  result.
-            // Note: We cannot use result directly as there seems to be some issues when traversing
-            //  the prototype chain.
-            presult = new Proxy({}, {
-                ownKeys: () => allKeys(result),
-                getOwnPropertyDescriptor: (t, p) => getDeepPropertyDescriptor(result, p, t),
-                getPrototypeOf: () => Object.getPrototypeOf(result),
-                setPrototypeOf: (t, p) => { Object.setPrototypeOf(result, p); },
-                isExtensible: () => Object.isExtensible(result),
-                preventExtensions: () => Object.preventExtensions(result),
-                defineProperty: (t, p, d) => Object.defineProperty(result, p, d),
-                has: (t, p) => p in result,
-                get: (t, p) => result[p],
-                set: (t, p, v) => result[p] = v,
-                deleteProperty: (t, p) => delete result[p]
-            });
-            return presult;
-
-            function process(key) {
-                const def = Object.getOwnPropertyDescriptor(extend, key);
-                var res = result;
-                if (def.hasOwnProperty('value')) {
-                    // Undefined indicates property removal.
-                    if (def.value === undefined) {
-                        if (proto.hasOwnProperty(key)) {
-                            // Do nothing as we don't want to override proto's existing value
-                            return;
-                        }
-                        // We need this def to be written onto the prototype so it is
-                        //  not listed as a property of result
-                        // TODO: With allKeys it is listed now... How to make sure it is not...
-                        //      NO... it is not... but showing from proto!?!?
-                        res = proto;
-                        def.writable = true;
-                        def.enumerable = false;
-                        def.configurable = true;
-                    } else {
-                        def.configurable = !options.protectStructure;
-                        def.writable = !options.readOnly;
-                        // TODO: If base is a accessor... should we not make this an
-                        //  accessor (with potential setter for override?)
-                        def.value = extendBase(base[key], def.value);
-                    }
-                } else {
-                    def.configurable = !options.protectStructure;
+            function update() {
+                var id = base[parser.PROPERTY_SYMBOL_ID];
+                if (id) {
+                    updateId(id, base, result);
                 }
-                Object.defineProperty(res, key, def);
+                id = extend[parser.PROPERTY_SYMBOL_ID];
+                if (id) {
+                    updateId(id, extend, result);
+                }
             }
 
-            function unprocessed(key) {
-                return common.typeOf(base[key]) === 'object' && !result.hasOwnProperty(key);
+            function updateId(id, obj, updated) {
+                var i, target;
+                target = Object.getPrototypeOf(Object.getPrototypeOf(updated)).id;
+                for (i = 0; i < locsArr.length; i++) {
+                    if (obj && locsArr[i][id] === obj) {
+                        locsArr[i][id] = updated;
+                        updates[id] = updated;
+                    }
+                }
+                for (i = 0; i < envsArr.length; i++) {
+                    if (obj && envsArr[i][id] === obj) {
+                        envsArr[i][id] = updated;
+                        updates[id] = updated;
+                    }
+                }
             }
 
-            function reverseProcess(key) {
-                Object.defineProperty(result, key, {
-                    configurable: !options.protectStructure,
+            /** Processes an individual key */
+            function processKey(k) {
+                var bt = common.typeOf(base[k]),
+                    et = common.typeOf(extend[k]),
+                    def = Object.getOwnPropertyDescriptor(extend, k);
+
+                // If we have an accessor, we just copy it onto the result, unless it
+                //  is an object which we then recursively process and define as a normal
+                //  value property
+                if (def && !def.hasOwnProperty('value')) {
+                    if (extend[k] && typeof extend[k] === 'object') {
+                        def.value = processLevel(base[k], extend[k]);
+                        delete def.get;
+                        delete def.set;
+                    }
+                    Object.defineProperty(result, k, def);
+                    return;
+                }
+                def = undefined;
+                if (!extend.hasOwnProperty(k)) {
+                    def = Object.getOwnPropertyDescriptor(base, k);
+                    if (def && !def.hasOwnProperty('value')) {
+                        if (extend[k] && typeof extend[k] === 'object') {
+                            def.value = processExtendObject(base[k]);
+                            delete def.get;
+                            delete def.set;
+                        }
+                        Object.defineProperty(result, k, def);
+                        return;
+                    }
+                }
+
+                // All following is to process non-accessors
+                // If we have an object, or array we want to make sure we pass locals and
+                //  environment along.
+                if (bt !== et && et === 'object') {
+                    setResultValue(result, k, processExtendObject(extend[k]));
+                } else if (bt !== et && et === 'array') {
+                    result[k] = extend[k].map(processExtendObject);
+                } else if (extend.hasOwnProperty(k) && et === 'undefined') {
+                    // Hide the prop
+                    Object.defineProperty(result, k, {
+                        enumerable: false,
+                        configurable: true,
+                        get: function () {
+                            return undefined;
+                        },
+                        set: function (value) {
+                            // We need to redifine as an enumerable...
+                            Object.defineProperty(result, k, {
+                                enumerable: true,
+                                configurable: true,
+                                value: value
+                            });
+                        }
+                    });
+                } else if (et === 'undefined') {
+                    setResultValue(result, k, processExtendObject(base[k]));
+                } else {
+                    setResultValue(result, k, processLevel(base[k], extend[k]));
+                }
+
+                function processExtendObject(extend) {
+                    var tmp = {};
+                    writeLocalsAndEnvironment(tmp);
+                    return processLevel(tmp, extend);
+                }
+
+                function setResultValue(result, name, value) {
+                    Object.defineProperty(result, name, {
+                        enumerable: true,
+                        value: value,
+                        writable: !options.readOnly,
+                        configurable: !options.protectStructure
+                    });
+                }
+            }
+
+            function writeLocalsAndEnvironment(obj) {
+                // Add the locals and environment
+                Object.defineProperty(obj, parser.PROPERTY_SYMBOL_LOCALS, {
+                    enumerable: false,
+                    value: locals,
                     writable: !options.readOnly,
-                    value: objectExtend(base[key], {})
+                    configurable: !options.protectStructure
+                });
+                Object.defineProperty(obj, parser.PROPERTY_SYMBOL_ENVIRONMENT, {
+                    enumerable: false,
+                    value: env,
+                    writable: !options.readOnly,
+                    configurable: !options.protectStructure
                 });
             }
+
+        }
+
+        function processLocals(locs) {
+            var res;
+            if (locs && typeof locs === 'object') {
+                res = locals.get(locs);
+                if (!res) {
+                    res = Object.assign({}, locs);
+                    locsArr.push(res);
+                    Object.assign(res, updates);
+                    locals.set(locs, res);
+                }
+            } else {
+                res = {};
+            }
+            return res;
+        }
+
+        function processEnvironment(env) {
+            var res;
+            if (env && typeof env === 'object') {
+                res = envs.get(env);
+                if (!res) {
+                    res = Object.assign({}, env);
+                    envsArr.push(res);
+                    Object.assign(res, updates);
+                    envs.set(env, res);
+                }
+            } else {
+                res = {};
+            }
+            return res;
         }
 
         function arrayExtend(base, extend) {
@@ -194,20 +271,15 @@
                     return applyCommands(base.slice(), commands);
                 }
             }
-            return extend.slice();
+            return extend.map(e => processLevel({}, e));
         }
 
         /** Applies the commands to the base array. */
         function applyCommands(base, commands) {
             // We need to operate on a copy of base.
-            base = base.map(emptyExtend);
+            base = base.map(e => processLevel({}, e));
             commands.forEach(applyCommand);
             return base;
-
-            /** Extends an empty object so we have a new clone */
-            function emptyExtend(item) {
-                return extendBase({}, item);
-            }
 
             /** Executes the command on the base */
             function applyCommand(command) {
@@ -243,7 +315,7 @@
                         if (command.find) {
                             index = find(command.find);
                             if (index > -1) {
-                                base[index] = extendBase(base[index], command.value);
+                                base[index] = processLevel(base[index], command.value);
                             }
                         } else {
                             console.warn('No find parameters specified');
@@ -279,55 +351,11 @@
                 }
             }
         }
+    }
 
-        function processLocals(locs) {
-            var res;
-            if (locs && typeof locs === 'object') {
-                res = locals.get(locs);
-                if (!res) {
-                    res = Object.assign({}, locs);
-                    locsArr.push(res);
-                    Object.assign(res, updates);
-                    locals.set(locs, res);
-                }
-            } else {
-                res = {};
-            }
-            return res;
-        }
-
-        function processEnvironment(env) {
-            var res;
-            if (env && typeof env === 'object') {
-                res = envs.get(env);
-                if (!res) {
-                    res = Object.assign({}, env);
-                    envsArr.push(res);
-                    Object.assign(res, updates);
-                    envs.set(env, res);
-                }
-            } else {
-                res = {};
-            }
-            return res;
-        }
-
-        function updateId(id, obj, updated) {
-            var i, target;
-            target = Object.getPrototypeOf(Object.getPrototypeOf(updated)).id;
-            for (i = 0; i < locsArr.length; i++) {
-                if (obj && locsArr[i][id] === obj) {
-                    locsArr[i][id] = updated;
-                    updates[id] = updated;
-                }
-            }
-            for (i = 0; i < envsArr.length; i++) {
-                if (obj && envsArr[i][id] === obj) {
-                    envsArr[i][id] = updated;
-                    updates[id] = updated;
-                }
-            }
-        }
+    function allKeys(obj1, obj2) {
+        var keys = Object.keys(obj1).concat(Object.keys(obj2));
+        return keys.filter((k, i) => keys.indexOf(k) === i);
     }
 
     /**
@@ -353,49 +381,6 @@
             } else {
                 return false;
             }
-        }
-    }
-
-    /** Used to retrieve every public key on an object and its prototype chain */
-    function allKeys(obj) {
-        // TODO: Could it be missing from here???
-        var res = [], prop;
-        for (prop in obj) { // jshint ignore:line
-            res.push(prop);
-        }
-        return res;
-    }
-
-    /** Looks up a property descriptor all the way up the objects prototype chain */
-    function getDeepPropertyDescriptor(obj, prop, target) {
-        var proto, res = Object.getOwnPropertyDescriptor(obj, prop);
-        proto = Object.getPrototypeOf(obj);
-        // Check for hidden properties
-        if (isPossibleCloak(res)) {
-            if (prop in proto) {
-                return undefined;
-            }
-        }
-        if (!res) {
-            if (proto) {
-                res = getDeepPropertyDescriptor(proto, prop, target);
-            }
-        }
-
-        // Note: There seems to be a bug in that won't allow you to return a property descriptor
-        //  on a proxy as non-configurable if it does not exist on the target object.
-        if (res && res.configurable === false) {
-            if (!Object.getOwnPropertyDescriptor(target, prop)) {
-                Object.defineProperty(target, prop, res);
-            }
-        }
-        return res;
-
-        function isPossibleCloak(desc) {
-            return desc &&
-                desc.hasOwnProperty('value') &&
-                desc.value === undefined &&
-                desc.enumerable === false;
         }
     }
 
