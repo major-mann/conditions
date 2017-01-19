@@ -237,3 +237,4 @@ The following commands may be issues:
 * Move across to mocha + chai testing.
 * Adding travis CI and codecov.io support.
 * Switch to eslint
+* Get rid of requirements for global wrapping {} or []

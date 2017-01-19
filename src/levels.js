@@ -24,7 +24,7 @@
      *  * protectStructure - Whether to make properties non-configurable
      */
     function load(config, levels, options) {
-        var locals, locsArr, envs, envsArr, objs, updates, i, result;
+        var locals, locsArr, envs, envsArr, objs, updates, i, result, cache;
 
         options = options || {};
         locals = new WeakMap();
@@ -35,8 +35,10 @@
         updates = {};
 
         if (Array.isArray(levels)) {
+            cache = new WeakMap();
             result = processLevel(config, levels[0]);
             for (i = 1; i < levels.length; i++) {
+                cache = new WeakMap();
                 result = processLevel(result, levels[i]);
             }
         } else {
@@ -68,11 +70,23 @@
         }
 
         function objectExtend(base, extend) {
-            var result, keys, locals, env, tmp;
+            var result, cachedResult, extendCachedResult, keys, locals, env, tmp;
+
+            cachedResult = cache.get(base);
+            if (cachedResult) {
+                extendCachedResult = cachedResult.get(extend);
+                if (extendCachedResult) {
+                    return extendCachedResult;
+                }
+            }
 
             // Create the result with the base as a prototype
             result = Object.create({});
-
+            if (!cachedResult) {
+                extendCachedResult = new WeakMap();
+                cache.set(base, extendCachedResult);
+                extendCachedResult.set(extend, result);
+            }
             locals = processLocals(base[parser.PROPERTY_SYMBOL_LOCALS]);
             env = processEnvironment(base[parser.PROPERTY_SYMBOL_ENVIRONMENT]);
             if (env.source) {
@@ -127,15 +141,27 @@
                     et = common.typeOf(extend[k]),
                     def = Object.getOwnPropertyDescriptor(extend, k);
 
-                // If we have an accessor, we just copy it onto the result
+                // If we have an accessor, we just copy it onto the result, unless it
+                //  is an object which we then recursively process and define as a normal
+                //  value property
                 if (def && !def.hasOwnProperty('value')) {
+                    if (extend[k] && typeof extend[k] === 'object') {
+                        def.value = processLevel(base[k], extend[k]);
+                        delete def.get;
+                        delete def.set;
+                    }
                     Object.defineProperty(result, k, def);
                     return;
                 }
                 def = undefined;
-                if (!et.hasOwnProperty(k)) {
+                if (!extend.hasOwnProperty(k)) {
                     def = Object.getOwnPropertyDescriptor(base, k);
                     if (def && !def.hasOwnProperty('value')) {
+                        if (extend[k] && typeof extend[k] === 'object') {
+                            def.value = processExtendObject(base[k]);
+                            delete def.get;
+                            delete def.set;
+                        }
                         Object.defineProperty(result, k, def);
                         return;
                     }
