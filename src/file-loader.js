@@ -80,7 +80,7 @@
 
         function processLocation(location) {
             return loadFile(location, true)
-                .then(processData)
+                .then(data => processData(location, data))
                 .catch(onError);
 
             function onError(err) {
@@ -93,11 +93,12 @@
             }
         }
 
-        function processData(configData) {
+        function processData(location, configData) {
             var ldr = defaultLoader;
             if (typeof options.customLoader === 'function') {
                 ldr = options.customLoader;
             }
+            options.context = location;
             return loader(configData, ldr, options);
 
             /** The loader for imports */

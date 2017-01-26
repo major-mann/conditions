@@ -31,22 +31,16 @@
      *  before being assigned.
      * @param {object} options The options for the loader. This can contain the following:
      *      * {string} name The name of the import function. Defaults to "$import"
-     *      * {object} source Defaults to false. true To pass the root of the config as an
-     *          environment variable named source to the loaded files. If this is a function it
-     *          will be passed the loader location to filter which items will be passed the source
-     *          property.
-     *      * {object} locals - Defaults to false. true to pass the objects associated with any ids
-     *          to the loaded config. If this is a function it will be passed the loader location
-     *          to filter which items will be passed the locals.
-     *      * environment - The environment variables to pass to the parser.
-     *      * protectStructure - Ensures all properties are non configurable.
-     *      * readOnly - Ensures all created properties are read only. Note: This will not apply
-     *          to existing properties on config.
+     *      * {object} environment - The environment variables to pass to the parser.
+     *      * {boolean} protectStructure - Ensures all properties are non configurable.
+     *      * {boolean} readOnly - Ensures all created properties are read only. Note: This will
+     *          not apply to existing properties on config.
+     *      * {string} context - Context informaiton to pass on errors.
      * @returns {promise} A promise which will be resolved with the config object once all includes
      *  have been loaded.
      */
     function process(str, loader, options) {
-        var imports;
+        var imports, config;
         return new Promise(function (resolve, reject) {
             if (typeof loader !== 'function') {
                 throw new Error('loader MUST be a function');
@@ -60,16 +54,16 @@
 
             imports = [];
             try {
-                let config = parser(str, options);
+                config = parser(str, options);
                 Promise.all(imports)
-                    .then(function () { resolve(config); })
+                    .then(() => resolve(config))
                     .catch(reject);
             } catch (ex) {
                 reject(ex);
             }
         });
 
-        function handleCustomExpression(block, source, environment, locals) {
+        function handleCustomExpression(block, contextManager) {
             var imported, location;
             if (block.type === 'CallExpression' && block.callee.name === options.name) {
                 if (block.arguments[0] && block.arguments[0].type === 'Literal') {
@@ -90,61 +84,41 @@
             function doImport(location) {
                 var prom = loader(location);
                 if (prom instanceof Promise) {
-                    imports.push(prom.then(processLoaderResult));
+                    imports.push(prom.then(data => processLoaderResult(location, data)));
                 } else {
-                    processLoaderResult(prom);
+                    // Note: We need to be in next tick to process since we need a
+                    //  copy of the context manager when processing and for that we need the
+                    //  current execution stack to complete
+                    imports.push(oneTick().then(() => processLoaderResult(location, prom)));
                 }
+            }
+
+            function oneTick() {
+                return new Promise(function (resolve) {
+                    resolve();
+                });
             }
 
             /**
              * Processes the return value from the loader.
              */
-            function processLoaderResult(data) {
-                var env, opts;
+            function processLoaderResult(location, data) {
                 if (typeof data !== 'string') {
                     imported = data;
-                    return;
+                    return Promise.resolve();
                 }
-                env = {};
-                if (assignAdditional('source', location)) {
-                    env.source = source;
-                }
-                if (assignAdditional('locals', location)) {
-                    if (common.isObject(locals)) {
-                        common.extend(env, locals);
-                    }
-                }
-
-                common.extend(env, environment);
-                if (options.environment && typeof options.environment === 'object') {
-                    common.extend(env, environment, options.environment);
-                }
-
-                opts = {
-                    environment: env,
-                    // These will be done later, if necessary
+                var opts = {
+                    environment: options.environment,
                     readOnly: options.readOnly,
                     protectStructure: options.protectStructure,
-                    custom: handleCustomExpression
+                    custom: handleCustomExpression,
+                    context: location,
+                    contextManager: config[parser.PROPERTY_SYMBOL_CONTEXT]
                 };
                 return process(data, loader, opts)
                     .then(function (cfg) {
                         imported = cfg;
                     });
-            }
-        }
-
-        /**
-         * Assigns one of the additional properties, first checking if it is a
-         *   function, and using it as a filter if it is.
-         * @param {string} name The name of the additional property to assign.
-         */
-        function assignAdditional(name, location) {
-            const isFunc = typeof options[name] === 'function';
-            if (isFunc) {
-                return !!options[name](location);
-            } else {
-                return !!options[name];
             }
         }
     }

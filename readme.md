@@ -237,4 +237,9 @@ The following commands may be issues:
 * Move across to mocha + chai testing.
 * Adding travis CI and codecov.io support.
 * Switch to eslint
-* Get rid of requirements for global wrapping {} or []
+* Highly complex sample config
+* Browser acceptance testing
+* Node acceptance testing
+* Filename on error
+* Fix expressions in arrays
+* Constant expressions should be compiled, executed and set as normal properties

@@ -11,7 +11,8 @@
     module.exports.COMMAND_CHECK = defaultCommandCheck;
 
     const common = require('./common.js'),
-        parser = require('./parser.js');
+        parser = require('./parser.js'),
+        contextManager = require('./context-manager.js');
 
     /**
      * Applies the extension arguments to the config. This creates a completely new object
@@ -20,12 +21,12 @@
      * @param {object} config The config to extend
      * @param {array} levels The levels to extend the config by.
      * @param {object} options The options to apply when extending config.
-     *  * readOnly - Whether all properties will be set to readOnly
-     *  * protectStructure - Whether to make properties non-configurable
+     *      * {boolean} readOnly - Whether all properties will be set to readOnly
+     *      * {boolean} protectStructure - Whether to make properties non-configurable
      */
     function load(config, levels, options) {
-        var locals, locsArr, envs, envsArr, objs, updates, i, result, cache;
-
+        var locals, locsArr, envs, envsArr, objs, updates, i, result, cache, cman;
+        debugger;
         options = options || {};
         locals = new WeakMap();
         locsArr = [];
@@ -34,15 +35,21 @@
         objs = new WeakMap();
         updates = {};
 
-        if (Array.isArray(levels)) {
+        cman = config[parser.PROPERTY_SYMBOL_CONTEXT];
+        if (!cman) {
+            cman = contextManager(config);
+        }
+
+        result = config;
+        if (Array.isArray(levels) && levels.length) {
+            // prepareLevelProcess(levels[0]);
             cache = new WeakMap();
             result = processLevel(config, levels[0]);
             for (i = 1; i < levels.length; i++) {
+                // prepareLevelProcess(levels[i]);
                 cache = new WeakMap();
                 result = processLevel(result, levels[i]);
             }
-        } else {
-            result = config;
         }
         return result;
 
@@ -55,7 +62,14 @@
             } else if (isObj(level)) {
                 return processLevel({}, level);
             } else if (Array.isArray(level)) {
-                return level.map(e => load({}, e, options));
+                let res = level.map(e => processLevel({}, e));
+                Object.defineProperty(res, parser.PROPERTY_SYMBOL_CONTEXT, {
+                    enumerable: false,
+                    value: cman,
+                    writable: !options.readOnly,
+                    configurable: !options.protectStructure
+                });
+                return res;
             } else {
                 return level;
             }
@@ -69,82 +83,105 @@
             }
         }
 
-        function objectExtend(base, extend) {
-            var result, cachedResult, extendCachedResult, keys, locals, env, tmp;
+        function processContext(base, extend, result) {
+            var ectx, rctx, id;
+            ectx = extend[parser.PROPERTY_SYMBOL_CONTEXT];
+            if (ectx) {
+                rctx = cman.sub(ectx.name(), ectx.environment(), ectx.locals());
+            } else {
+                rctx = cman.sub();
+            }
 
-            cachedResult = cache.get(base);
+            Object.defineProperty(result, parser.PROPERTY_SYMBOL_CONTEXT, {
+                enumerable: false,
+                value: rctx,
+                writable: !options.readOnly,
+                configurable: !options.protectStructure
+            });
+
+            // Ensure environment is updated
+            rctx.update(base, result);
+            rctx.update(extend, result);
+
+            // Register if we have an id
+            if (extend[parser.PROPERTY_SYMBOL_ID]) {
+                id = extend[parser.PROPERTY_SYMBOL_ID];
+            } else if (base[parser.PROPERTY_SYMBOL_ID]) {
+                id = base[parser.PROPERTY_SYMBOL_ID];
+            }
+            if (id) {
+                rctx.register(id, result);
+                Object.defineProperty(result, parser.PROPERTY_SYMBOL_ID, {
+                    enumerable: false,
+                    value: id,
+                    writable: !options.readOnly,
+                    configurable: !options.protectStructure
+                });
+            }
+        }
+
+        function objectExtend(base, extend) {
+            var result, cachedResult, keys;
+
+            cachedResult = cacheGet(base, extend);
             if (cachedResult) {
-                extendCachedResult = cachedResult.get(extend);
-                if (extendCachedResult) {
-                    return extendCachedResult;
-                }
+                return cachedResult;
             }
 
             // Create the result with the base as a prototype
             result = Object.create({});
-            if (!cachedResult) {
-                extendCachedResult = new WeakMap();
-                cache.set(base, extendCachedResult);
-                extendCachedResult.set(extend, result);
-            }
-            locals = processLocals(base[parser.PROPERTY_SYMBOL_LOCALS]);
-            env = processEnvironment(base[parser.PROPERTY_SYMBOL_ENVIRONMENT]);
-            if (env.source) {
-                tmp = objs.get(env.source);
-                if (tmp) {
-                    env.source = tmp;
-                }
-            }
-
-            writeLocalsAndEnvironment(result);
-
-            // Update the locals and environment
-            update();
+            processContext(base, extend, result);
+            cacheSet(base, extend, result);
 
             // Now we are ready to process the keys.
             keys = allKeys(base, extend);
             keys.forEach(processKey);
             Object.setPrototypeOf(result, base);
+
+            if (result[parser.PROPERTY_SYMBOL_ID] && !result.hasOwnProperty(parser.PROPERTY_ID)) {
+                result[parser.PROPERTY_ID] = result[parser.PROPERTY_SYMBOL_ID];
+            }
+
+            if (result[parser.PROPERTY_SYMBOL_ID]) {
+                console.log('%s same as registered? %s',
+                    result[parser.PROPERTY_SYMBOL_ID],
+                    cman.value(result[parser.PROPERTY_ID]) === result);
+            }
+
             return result;
 
-            function update() {
-                var id = base[parser.PROPERTY_SYMBOL_ID];
-                if (id) {
-                    updateId(id, base, result);
-                }
-                id = extend[parser.PROPERTY_SYMBOL_ID];
-                if (id) {
-                    updateId(id, extend, result);
+            function cacheGet(base, extend) {
+                var cachedResult, extendCachedResult;
+                cachedResult = cache.get(base);
+                if (cachedResult) {
+                    extendCachedResult = cachedResult.get(extend);
+                    if (extendCachedResult) {
+                        return extendCachedResult;
+                    }
                 }
             }
 
-            function updateId(id, obj, updated) {
-                var i, target;
-                target = Object.getPrototypeOf(Object.getPrototypeOf(updated)).id;
-                for (i = 0; i < locsArr.length; i++) {
-                    if (obj && locsArr[i][id] === obj) {
-                        locsArr[i][id] = updated;
-                        updates[id] = updated;
-                    }
+            function cacheSet(base, extend, value) {
+                var cachedResult;
+                cachedResult = cache.get(base);
+                if (!cachedResult) {
+                    cachedResult = new WeakMap();
+                    cache.set(base, cachedResult);
                 }
-                for (i = 0; i < envsArr.length; i++) {
-                    if (obj && envsArr[i][id] === obj) {
-                        envsArr[i][id] = updated;
-                        updates[id] = updated;
-                    }
-                }
+                cachedResult.set(extend, value);
             }
 
             /** Processes an individual key */
             function processKey(k) {
-                var bt = common.typeOf(base[k]),
-                    et = common.typeOf(extend[k]),
-                    def = Object.getOwnPropertyDescriptor(extend, k);
+                var bt, et, def;
+
+                def = Object.getOwnPropertyDescriptor(extend, k);
 
                 // If we have an accessor, we just copy it onto the result, unless it
                 //  is an object which we then recursively process and define as a normal
                 //  value property
-                if (def && !def.hasOwnProperty('value')) {
+                // TODO: This is not working well.....
+                if (def && def.get && def.get[module.exports.PROPERTY_SYMBOL_CUSTOM]) {
                     if (extend[k] && typeof extend[k] === 'object') {
                         def.value = processLevel(base[k], extend[k]);
                         delete def.get;
@@ -152,12 +189,18 @@
                     }
                     Object.defineProperty(result, k, def);
                     return;
+                } else if (def && def.get) {
+                    Object.defineProperty(result, k, def);
+                    return;
                 }
+
                 def = undefined;
+                bt = common.typeOf(base[k]);
+                et = common.typeOf(extend[k]);
                 if (!extend.hasOwnProperty(k)) {
                     def = Object.getOwnPropertyDescriptor(base, k);
                     if (def && !def.hasOwnProperty('value')) {
-                        if (extend[k] && typeof extend[k] === 'object') {
+                        if (base[k] && typeof base[k] === 'object') {
                             def.value = processExtendObject(base[k]);
                             delete def.get;
                             delete def.set;
@@ -198,9 +241,7 @@
                 }
 
                 function processExtendObject(extend) {
-                    var tmp = {};
-                    writeLocalsAndEnvironment(tmp);
-                    return processLevel(tmp, extend);
+                    return processLevel({}, extend);
                 }
 
                 function setResultValue(result, name, value) {
@@ -212,72 +253,32 @@
                     });
                 }
             }
-
-            function writeLocalsAndEnvironment(obj) {
-                // Add the locals and environment
-                Object.defineProperty(obj, parser.PROPERTY_SYMBOL_LOCALS, {
-                    enumerable: false,
-                    value: locals,
-                    writable: !options.readOnly,
-                    configurable: !options.protectStructure
-                });
-                Object.defineProperty(obj, parser.PROPERTY_SYMBOL_ENVIRONMENT, {
-                    enumerable: false,
-                    value: env,
-                    writable: !options.readOnly,
-                    configurable: !options.protectStructure
-                });
-            }
-
-        }
-
-        function processLocals(locs) {
-            var res;
-            if (locs && typeof locs === 'object') {
-                res = locals.get(locs);
-                if (!res) {
-                    res = Object.assign({}, locs);
-                    locsArr.push(res);
-                    Object.assign(res, updates);
-                    locals.set(locs, res);
-                }
-            } else {
-                res = {};
-            }
-            return res;
-        }
-
-        function processEnvironment(env) {
-            var res;
-            if (env && typeof env === 'object') {
-                res = envs.get(env);
-                if (!res) {
-                    res = Object.assign({}, env);
-                    envsArr.push(res);
-                    Object.assign(res, updates);
-                    envs.set(env, res);
-                }
-            } else {
-                res = {};
-            }
-            return res;
         }
 
         function arrayExtend(base, extend) {
-            var commands;
+            var commands, res, i;
             if (typeof module.exports.COMMAND_CHECK === 'function') {
                 commands = module.exports.COMMAND_CHECK(extend);
                 if (commands) {
-                    return applyCommands(base.slice(), commands);
+                    res = base.slice();
+                    processContext(base, extend, res);
+                    return applyCommands(res, commands);
                 }
             }
-            return extend.map(e => processLevel({}, e));
+            res = [];
+            processContext(base, extend, res);
+            for (i = 0; i < extend.length; i++) {
+                res.push(processLevel({}, extend[i]));
+            }
+            return res;
         }
 
         /** Applies the commands to the base array. */
         function applyCommands(base, commands) {
             // We need to operate on a copy of base.
-            base = base.map(e => processLevel({}, e));
+            for (let i = 0; i < base.length; i++) {
+                base[i] = processLevel({}, base[i]);
+            }
             commands.forEach(applyCommand);
             return base;
 

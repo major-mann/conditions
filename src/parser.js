@@ -7,11 +7,17 @@
 
     // Public API
     module.exports = parse;
+
+    // Dependencies
+    const contextManager = require('./context-manager.js');
+
     // Constants
     module.exports.PROPERTY_ID = 'id'; // This identifies the name of the id property when parsing.
     module.exports.PROPERTY_SYMBOL_ID = Symbol('id');
-    module.exports.PROPERTY_SYMBOL_ENVIRONMENT = Symbol('environment');
-    module.exports.PROPERTY_SYMBOL_LOCALS = Symbol('locals');
+    module.exports.PROPERTY_SYMBOL_CUSTOM = Symbol('custom');
+    module.exports.PROPERTY_SYMBOL_CONTEXT = Symbol('context');
+    // module.exports.PROPERTY_SYMBOL_ENVIRONMENT = Symbol('environment');
+    // module.exports.PROPERTY_SYMBOL_LOCALS = Symbol('locals');
     module.exports.PROPERTY_BASE_NAME = 'base';
     module.exports.VALID_GLOBALS = ['Infinity', 'NaN', 'undefined', 'Object', 'Number', 'String',
         'RegExp', 'Boolean', 'Array', 'Error', 'EvalError', 'InternalError', 'RangeError',
@@ -39,10 +45,12 @@
     *           prototype properties over locals and environment.
     *       * {function} custom - A function to call that allows custom expressions functions
     *           to be constructed.
+    *       * {string} context Additional context to be provided in any errors.
+    *       * {object} contextManager Optional contextManager instead of creating a new one
     * @throws {error} When str is not a string.
     */
     function parse(str, options) {
-        var code, config, locals = { };
+        var code, config, cman, placeholder;
 
         // Ensure the data is valid
         if (typeof str !== 'string') {
@@ -62,29 +70,59 @@
             options.environment = { };
         }
 
-        // Wrap to force expression
-        str = '(' + str + ')';
-
         // Get an AST representing the configuration
-        code = esprima.parse(str, {
-            loc: true
-        });
+        try {
+            // Wrap to force expression
+            code = esprima.parse(`(${str})`, {
+                loc: true
+            });
+        } catch (ex) {
+            try {
+                // Retry wrapped as object.
+                code = esprima.parse(`({${str}})`, {
+                    loc: true
+                });
+            } catch (ex2) {
+                // Preserve original exception.
+                throw ex;
+            }
+        }
 
         // Extract the root node.
         code = code.body[0].expression;
 
+        // Create the context manager
+        if (options.contextManager && typeof options.contextManager.sub === 'function') {
+            cman = options.contextManager.sub(options.context, options.environment);
+        } else {
+            placeholder = {};
+            cman = contextManager(placeholder, options.context, options.environment);
+        }
+
         // Check the root type, and make sure we have an object
         //   or an array.
+        var result;
         switch (code.type) {
             case 'ObjectExpression':
-                return parseObject(code, true);
+                result = parseObject(code);
+                break;
             case 'ArrayExpression':
-                return parseArray(code, true);
+                result = parseArray(code);
+                break;
+            case 'SequenceExpression':
+                // Convert to an array expression
+                code.type = 'ArrayExpression';
+                code.elements = code.expressions;
+                delete code.expressions;
+                result = parseArray(code, true);
+                break;
             default:
                 let msg = `configuration MUST have an object or array as the root element. ` +
                     `Got "${code.type}".`;
                 throw new Error(errorMessage(msg, code));
         }
+        cman.update(placeholder, result);
+        return result;
 
         /** Returns the value represented by the supplied literal block */
         function parseLiteral(block) {
@@ -172,11 +210,22 @@
         * @param {object} block The ArrayExpression to parse.
         * @returns {array} The Array representing the supplied block.
         */
-        function parseArray(block, initial) {
+        function parseArray(block) {
             const arr = [];
-            if (initial) {
+            if (!config) {
                 config = arr;
             }
+
+            // We always want a context manager on the root.
+            if (module.exports.PROPERTY_SYMBOL_CONTEXT) {
+                Object.defineProperty(arr, module.exports.PROPERTY_SYMBOL_CONTEXT, {
+                    enumerable: false,
+                    value: cman,
+                    writable: !options.readOnly,
+                    configurable: !options.protectStructure
+                });
+            }
+
             block.elements.forEach(mapVal);
             return arr;
 
@@ -191,40 +240,32 @@
         * Parses the supplied block
         * @param {object} block The block representing the object
         */
-        function parseObject(block, initial) {
-            var idprop,
-                result,
-                props;
+        function parseObject(block) {
+            var idprop, result, props;
 
             result = {};
-            if (initial) {
+            if (!config) {
                 config = result;
-            }
-
-            // Add locals via symbol.
-            if (module.exports.PROPERTY_SYMBOL_LOCALS) {
-                Object.defineProperty(result, module.exports.PROPERTY_SYMBOL_LOCALS, {
-                    enumerable: false,
-                    value: locals,
-                    writable: !options.readOnly,
-                    configurable: !options.protectStructure
-                });
-            }
-            // Add environment variables via symbol.
-            if (module.exports.PROPERTY_SYMBOL_ENVIRONMENT) {
-                Object.defineProperty(result, module.exports.PROPERTY_SYMBOL_ENVIRONMENT, {
-                    enumerable: false,
-                    value: options.environment,
-                    writable: !options.readOnly,
-                    configurable: !options.protectStructure
-                });
             }
 
             // Parse all the properties
             props = block.properties
                 // This applies the filtered properties to the prototype.
-                .filter(processId)
-                .map(parseProperty);
+                .filter(processId);
+            props = props.map(parseProperty);
+
+            if (result[module.exports.PROPERTY_SYMBOL_ID]) {
+                cman.register(result[module.exports.PROPERTY_SYMBOL_ID], result);
+            }
+
+            if (module.exports.PROPERTY_SYMBOL_CONTEXT) {
+                Object.defineProperty(result, module.exports.PROPERTY_SYMBOL_CONTEXT, {
+                    enumerable: false,
+                    value: cman,
+                    writable: !options.readOnly,
+                    configurable: !options.protectStructure
+                });
+            }
 
             // Assign the properties to the object
             props.forEach(assignProp);
@@ -252,12 +293,6 @@
                 if (prop.type === 'Property') {
                     name = propName(prop.key);
                     if (name === module.exports.PROPERTY_ID && prop.value.type === 'Identifier') {
-                        if (locals.hasOwnProperty(prop.value.name)) {
-                            throw new Error(errorMessage('duplicate id "' + prop.value.name + '"',
-                                prop));
-                        } else {
-                            locals[prop.value.name] = result;
-                        }
                         Object.defineProperty(result, module.exports.PROPERTY_SYMBOL_ID, {
                             enumerable: false,
                             value: prop.value.name,
@@ -323,6 +358,9 @@
                     definition.get = function getValue() {
                         return prop.value.call(this, context);
                     };
+                    if (prop.value[module.exports.PROPERTY_SYMBOL_CUSTOM]) {
+                        definition.get[module.exports.PROPERTY_SYMBOL_CUSTOM] = true;
+                    }
                 } else {
                     definition.writable = !options.readOnly;
                     definition.value = prop.value;
@@ -343,20 +381,17 @@
                 */
                 function context(name, nothrow) {
                     var proto = Object.getPrototypeOf(this),
-                        locals = this[module.exports.PROPERTY_SYMBOL_LOCALS],
-                        environment = this[module.exports.PROPERTY_SYMBOL_ENVIRONMENT],
+                        context = this[module.exports.PROPERTY_SYMBOL_CONTEXT],
                         value;
                     // If prototype is prefered check the entire chain for the property
                     if (options.preferPrototype && name in this) {
                         value = this[name];
                     } else if (this.hasOwnProperty(name)) { // Otherwise just the object
                         value = this[name];
-                    } else if (isObject(locals) && locals.hasOwnProperty(name)) {
-                        // Coming from an object in the config file with an id property.
-                        value = locals[name];
-                    } else if (isObject(environment) && environment.hasOwnProperty(name)) {
-                        // Coming from the consumer supplied globals
-                        value = environment[name];
+                    } else if (context.hasValue(name)) {
+                        // Coming from an object in the config file with an id property,
+                        //  or a value supplied as environment
+                        value = context.value(name);
                     } else if (name === module.exports.PROPERTY_BASE_NAME) {
                         value = proto && proto[prop.name];
                     } else if (name in this) { // We do this here for precedence
@@ -365,7 +400,14 @@
                     } else if (nothrow) { // Things like typeof
                         value = undefined;
                     } else {
-                        throw new Error(`identifier named "${name}" has not been declared!`);
+                        let msg = `identifier named "${name}" has not been declared!`;
+                        if (context && typeof context.name === 'function') {
+                            let cname = context.name();
+                            if (cname) {
+                                msg += `. ${cname}`;
+                            }
+                        }
+                        throw new Error(msg);
                     }
                     return value;
                 }
@@ -379,13 +421,15 @@
         *   given context.
         */
         function parseExpression(oblock) {
-            var body, func, res, block = oblock;
+            var body, func, res, haveCustom, block = oblock;
 
             // Get the possible custom expression function.
-            func = customProcess(block, config, options.environment, locals);
+            func = customProcess(block, cman);
 
-            // Process normally if we did not get a function back.
-            if (typeof func !== 'function') {
+            if (typeof func === 'function') {
+                haveCustom = true;
+            } else {
+                // Process normally if we did not get a function back.
                 // Ensure we are not doing something invalid.
                 validateBlock(block);
 
@@ -416,6 +460,10 @@
                 }
                 return val;
             };
+
+            if (haveCustom) {
+                res[module.exports.PROPERTY_SYMBOL_CUSTOM] = true;
+            }
 
             return res;
 
@@ -682,6 +730,13 @@
             } else {
                 pos = '';
             }
+            msg = msg + pos;
+            if (options.context) {
+                if (msg) {
+                    msg = msg + '. ';
+                }
+                msg += options.context;
+            }
             return msg + pos;
         }
 
@@ -691,9 +746,9 @@
         }
 
         /** Called to perform custom processing of a block. */
-        function customProcess(block, config, environment, locals) {
+        function customProcess(block, contextManager) {
             if (options.custom && typeof options.custom === 'function') {
-                return options.custom(block, config, environment, locals);
+                return options.custom(block, contextManager);
             } else {
                 return false;
             }

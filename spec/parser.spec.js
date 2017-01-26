@@ -29,16 +29,6 @@ describe('configuration parser', function () {
         it('should prevent illegal expression types from being used', function () {
             expect(parse.bind(null, data('illegalexpression'))).toThrowError(/illegal/i);
         });
-        it('should only allow 1 root value', function () {
-            expect(function () {
-                parse('{},{}');
-            }).toThrowError(/object.*array.*root/ig);
-        });
-        it('should not allow duplicate ids', function () {
-            expect(function () {
-                parse(data('duplicate-ids'));
-            }).toThrowError(/duplicate/ig);
-        });
     });
 
     describe('root', function () {
@@ -50,13 +40,12 @@ describe('configuration parser', function () {
             var val = parse(data('array'));
             expect(val).toEqual(jasmine.any(Array));
         });
-        it('should not create the $environment or $locals values on the value when they are not defined on the parse function', function () {
+        it('should not create the context value symbol when is is not defined on the parse function', function () {
             var val = parse(data('object'));
 
-            expect(Object.getOwnPropertySymbols(val).length).toBe(2);
+            expect(Object.getOwnPropertySymbols(val).length).toBe(1);
 
-            parse.PROPERTY_SYMBOL_LOCALS = undefined;
-            parse.PROPERTY_SYMBOL_ENVIRONMENT = undefined;
+            parse.PROPERTY_SYMBOL_CONTEXT = undefined;
 
             val = parse(data('object'));
             expect(Object.getOwnPropertySymbols(val).length).toBe(0);
@@ -167,15 +156,20 @@ describe('configuration parser', function () {
             var d = data('syntaxerror'), cfg;
             expect(parse.bind(null, d)).toThrowError(/line.*6/i);
 
-            var env = {};
+            var env = {}, err;
             Object.defineProperty(env, 'env', {
                 enumerable: true,
                 configurable: true,
-                get: function () { throw 'fake'; }
+                get: function () {
+                    if (err) {
+                        throw new Error('fake');
+                    }
+                }
             });
 
             d = data('expressions');
             cfg = parse(d, { environment: env });
+            err = true;
             expect(function () { return cfg.exp8; }).toThrow();
         });
         it('should report the line and column when an error occurs in an expression', function () {

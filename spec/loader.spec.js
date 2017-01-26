@@ -21,7 +21,7 @@ describe('loader', function () {
                 return new Promise(function (resolve, reject) {
                     loader(val, noop)
                         .then(function () {
-                            reject('Expected passing "' + typeof val + "' for the first argument to fail.");
+                            reject('Expected passing "' + typeof val + '" for the first argument to fail.');
                         })
                         .catch(function () {
                             resolve();
@@ -30,7 +30,6 @@ describe('loader', function () {
             }
         });
         it('should ensure loader is a function', function (done) {
-            var noop = function () {};
             Promise.all([ doCheck(1), doCheck(true), doCheck({}) ])
                 .then(done)
                 .catch(done.fail);
@@ -39,7 +38,7 @@ describe('loader', function () {
                 return new Promise(function (resolve, reject) {
                     loader('{}', val)
                         .then(function () {
-                            reject('Expected passing "' + typeof val + "' for the second argument to fail.");
+                            reject('Expected passing "' + typeof val + '" for the second argument to fail.');
                         })
                         .catch(function () {
                             resolve();
@@ -90,8 +89,7 @@ describe('loader', function () {
 
     describe('options', function () {
         it('should pass all locals from the current config to the loaded configs if options.locals is truthy', function (done) {
-            var config, sub;
-            config = Object.create({
+            var config = Object.create({
                 $locals: {
                     foo: 'bar'
                 }
@@ -115,8 +113,7 @@ describe('loader', function () {
 
         });
         it('should pass the root of the config as the environment variable "source" to the loaded configs if options.source is truthy', function (done) {
-            var config, sub;
-            config = '{ foo: "bar", sub: $import("...") }';
+            var config = '{ foo: "bar", sub: $import("...") }';
             loader(config, loaderHandler, { source: true })
                 .then(function (config) {
                     expect(config.sub.baz).toBe('bar');
@@ -129,8 +126,7 @@ describe('loader', function () {
             }
         });
         it('should pass all values defined in options.environment to the loaded configs', function (done) {
-            var config, sub;
-            config = '{ sub: $import("...") }';
+            var config = '{ sub: $import("...") }';
             loader(config, loaderHandler, { environment: { hello: 'world' } })
                 .then(function (config) {
                     expect(config.sub.baz).toBe('world');
@@ -143,8 +139,7 @@ describe('loader', function () {
             }
         });
         it('should make all properties non-configurable when protectStructure is truthy', function (done) {
-            var config, sub;
-            config = '{ foo: "bar", sub: $import("...") }';
+            var config = '{ foo: "bar", sub: $import("...") }';
             loader(config, loaderHandler, { environment: { hello: 'world' }, protectStructure: true })
                 .then(function (config) {
                     var def = Object.getOwnPropertyDescriptor(config, 'foo');
@@ -159,48 +154,6 @@ describe('loader', function () {
 
             function loaderHandler() {
                 return Promise.resolve('{ baz: hello }');
-            }
-        });
-        it('should allow a filter function to be defined for "source" which will allow properties to receive the "source" value to be filtered', function (done) {
-            // TODO: Looks like we are passing the source regardless....
-            var loadRes = {},
-                config = '{ foo: "hello", bar: $import("bar"), baz: $import("baz") }';
-            loader(config, loaderHandler, { source: check })
-                .then(function (config) {
-                    var val = config.bar.test;
-                    expect(config.bar.test).toEqual(jasmine.any(Object));
-                    expect(function () { return config.baz.test; })
-                        .toThrowError(/source.*not.*declared/);
-                    done();
-                })
-                .catch(done.fail);
-
-            function check(location) {
-                return location === 'bar';
-            }
-
-            function loaderHandler() {
-                return '{ test: Object.assign({}, source) }';
-            }
-        });
-        it('should allow a filter function to be defined for "locals" which will allow properties to receive the "locals" values to be filtered', function (done) {
-            var loadRes = {},
-                config = '{ id: main, foo: "hello", bar: $import("bar"), baz: $import("baz") }';
-            loader(config, loaderHandler, { locals: check })
-                .then(function (config) {
-                    expect(config.bar.test).toEqual(jasmine.any(Object));
-                    expect(function () { return config.baz.test; })
-                        .toThrowError(/main.*not.*declared/);
-                    done();
-                })
-                .catch(done.fail);
-
-            function check(location) {
-                return location === 'bar';
-            }
-
-            function loaderHandler() {
-                return '{ test: Object.assign({}, main) }';
             }
         });
     });
