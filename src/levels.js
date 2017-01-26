@@ -26,7 +26,6 @@
      */
     function load(config, levels, options) {
         var locals, locsArr, envs, envsArr, objs, updates, i, result, cache, cman;
-        debugger;
         options = options || {};
         locals = new WeakMap();
         locsArr = [];
@@ -140,12 +139,6 @@
 
             if (result[parser.PROPERTY_SYMBOL_ID] && !result.hasOwnProperty(parser.PROPERTY_ID)) {
                 result[parser.PROPERTY_ID] = result[parser.PROPERTY_SYMBOL_ID];
-            }
-
-            if (result[parser.PROPERTY_SYMBOL_ID]) {
-                console.log('%s same as registered? %s',
-                    result[parser.PROPERTY_SYMBOL_ID],
-                    cman.value(result[parser.PROPERTY_ID]) === result);
             }
 
             return result;
@@ -288,6 +281,20 @@
                 switch (command.action) {
                     case 'add':
                         base.push(command.value);
+                        break;
+                    case 'insert':
+                        if (command.find) {
+                            index = find(command.find);
+                            if (index > -1) {
+                                if (command.after) {
+                                    base.splice(index + 1, 0, command.value);
+                                } else {
+                                    base.splice(index, 0, command.value);
+                                }
+                            }
+                        } else {
+                            console.warn('No find parameters specified');
+                        }
                         break;
                     case 'remove':
                         if (command.find) {

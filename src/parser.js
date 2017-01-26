@@ -26,6 +26,8 @@
         'encodeURIComponent', 'escape', 'unescape'];
     module.exports.ILLEGAL_GLOBALS = ['eval', 'Function'];
 
+    const CONSTANT_INVALID = ['Identifier', 'ThisExpression'];
+
     // Dependencies
     const esprima = require('esprima'),
         escodegen = require('escodegen'),
@@ -211,7 +213,7 @@
         * @returns {array} The Array representing the supplied block.
         */
         function parseArray(block) {
-            const arr = [];
+            var arr = [];
             if (!config) {
                 config = arr;
             }
@@ -225,14 +227,30 @@
                     configurable: !options.protectStructure
                 });
             }
-
             block.elements.forEach(mapVal);
+
+            // We do this so we can handle expressions in arrays
+            if (arr.some(e => typeof e === 'function')) {
+                arr = new Proxy(arr, {
+                    get
+                });
+            }
+
             return arr;
 
             /** Calls parseblock with the array as the second arg */
             function mapVal(block) {
                 var parsed = parseBlock(block);
                 arr.push(parsed);
+            }
+
+            function get(target, prop) {
+                prop = parseInt(prop, 10);
+                if (Number.isInteger(prop) && typeof target[prop] === 'function') {
+                    return target[prop].apply(target);
+                } else {
+                    return target[prop];
+                }
             }
         }
 
@@ -429,10 +447,14 @@
             if (typeof func === 'function') {
                 haveCustom = true;
             } else {
-                // Process normally if we did not get a function back.
                 // Ensure we are not doing something invalid.
                 validateBlock(block);
+            }
 
+            if (!haveCustom && isConstantExpression(block)) {
+                return constantExpression(block);
+            } else if (!haveCustom) {
+                // Process normally if we did not get a function back.
                 // Process the identifiers
                 block = processIdentifiers(block);
 
@@ -486,6 +508,35 @@
                     validateBlock(obj[name]);
                 }
             }
+        }
+
+        function isConstantExpression(exp) {
+            if (CONSTANT_INVALID.indexOf(exp.type) > -1) {
+                return false;
+            }
+            return Object.keys(exp).every(k => processVal(exp[k]));
+            function processVal(val) {
+                if (Array.isArray(val)) {
+                    return val.every(processVal);
+                } else if (val && typeof val === 'object') {
+                    return isConstantExpression(val);
+                } else if (typeof val === 'function') {
+                    return false;
+                } else {
+                    return true;
+                }
+            }
+        }
+
+        function constantExpression(exp) {
+            var func, body;
+            exp = {
+                type: 'ReturnStatement',
+                argument: exp
+            };
+            body = escodegen.generate(exp);
+            func = new Function([], body); // jshint ignore:line
+            return func();
         }
 
         /** Attempts to add line and column information to an error */

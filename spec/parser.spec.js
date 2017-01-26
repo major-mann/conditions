@@ -149,6 +149,11 @@ describe('configuration parser', function () {
         it('should not allow assignment expressions', function () {
             expect(parse.bind(null, '{ foo: Date = 10 }')).toThrowError(/not.*supported/i);
         });
+        it('should parse constant expressions to normal values', function () {
+            expect(val.constant).toBe(2500);
+            val.constant = 100;
+            expect(val.constant).toBe(100);
+        });
     });
 
     describe('errors', function() {
