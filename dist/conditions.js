@@ -20770,6 +20770,129 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
 })(module.exports);
 
 },{}],59:[function(require,module,exports){
+'use strict';
+
+var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
+
+/**
+ * @module Context manager module. This manages locals and environment variables.
+ */
+(function contextManager(module) {
+    'use strict';
+
+    module.exports = createContextManager;
+
+    var parser;
+
+    /**
+     * Creates a new context manager which can be used to manage locals and evironment variables.
+     * @param {string} name The name of the context
+     * @param {object} env Any envrironment variables.
+     * @param {object} locals The locals to create the context manager with.
+     */
+    function createContextManager(_source, _name, env, _locals) {
+        // Do this here to avoid circular ref issues.
+        if (!parser) {
+            parser = require('./parser.js');
+        }
+
+        if (!env || (typeof env === 'undefined' ? 'undefined' : _typeof(env)) !== 'object') {
+            env = {};
+        }
+
+        if (!_locals || (typeof _locals === 'undefined' ? 'undefined' : _typeof(_locals)) !== 'object') {
+            _locals = {};
+        }
+
+        return {
+            root: true,
+            environment: function environment() {
+                return env;
+            },
+            name: function name() {
+                return _name;
+            },
+            hasValue: hasValue,
+            register: register,
+            locals: function locals() {
+                return _locals;
+            },
+            source: function source() {
+                return _source;
+            },
+            value: value,
+            update: update,
+            sub: _sub
+        };
+
+        function hasValue(name) {
+            return env.hasOwnProperty(name) || _locals.hasOwnProperty(name) || name === 'source';
+        }
+
+        function value(name) {
+            if (_locals.hasOwnProperty(name)) {
+                return _locals[name];
+            } else if (env.hasOwnProperty(name)) {
+                return env[name];
+            } else if (name === 'source') {
+                return _source;
+            } else {
+                return undefined;
+            }
+        }
+
+        function register(id, obj) {
+            _locals[id] = obj;
+        }
+
+        function update(orig, updated) {
+            if (_source === orig) {
+                _source = updated;
+            }
+            for (var prop in env) {
+                if (env.hasOwnProperty(prop)) {
+                    if (env[prop] === orig) {
+                        env[prop] = updated;
+                    }
+                }
+            }
+        }
+
+        /** Creates a manager for a sub object which interacts with this manager */
+        function _sub(nm, environment, locs) {
+            if (environment && (typeof environment === 'undefined' ? 'undefined' : _typeof(environment)) === 'object') {
+                Object.assign(env, environment);
+            }
+            if (locs && (typeof locs === 'undefined' ? 'undefined' : _typeof(locs)) === 'object') {
+                Object.assign(_locals, locs);
+            }
+            return {
+                root: false,
+                environment: function environment() {
+                    return env;
+                },
+                name: function name() {
+                    return nm || _name;
+                },
+                hasValue: hasValue,
+                register: register,
+                locals: function locals() {
+                    return _locals;
+                },
+                source: function source() {
+                    return _source;
+                },
+                value: value,
+                update: update,
+                sub: function sub(n, e, l) {
+                    return _sub(nm || _name, e, l);
+                }
+            };
+        }
+    }
+})(module);
+
+},{"./parser.js":64}],60:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -20856,7 +20979,9 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
         }
 
         function processLocation(location) {
-            return loadFile(location, true).then(processData).catch(onError);
+            return loadFile(location, true).then(function (data) {
+                return processData(location, data);
+            }).catch(onError);
 
             function onError(err) {
                 if (load.warnOnError) {
@@ -20868,11 +20993,12 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
             }
         }
 
-        function processData(configData) {
+        function processData(location, configData) {
             var ldr = defaultLoader;
             if (typeof options.customLoader === 'function') {
                 ldr = options.customLoader;
             }
+            options.context = location;
             return loader(configData, ldr, options);
 
             /** The loader for imports */
@@ -21012,7 +21138,7 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
 })(module);
 
 }).call(this,require('_process'))
-},{"./levels.js":61,"./loader.js":62,"_process":24,"fs":4,"http":48,"path":22,"url":54}],60:[function(require,module,exports){
+},{"./levels.js":62,"./loader.js":63,"_process":24,"fs":4,"http":48,"path":22,"url":54}],61:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -21032,7 +21158,7 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
 })();
 
 }).call(this,require('_process'))
-},{"./file-loader.js":59,"./levels.js":61,"./loader.js":62,"./parser.js":63,"_process":24}],61:[function(require,module,exports){
+},{"./file-loader.js":60,"./levels.js":62,"./loader.js":63,"./parser.js":64,"_process":24}],62:[function(require,module,exports){
 'use strict';
 
 var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
@@ -21050,7 +21176,8 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
     module.exports.COMMAND_CHECK = defaultCommandCheck;
 
     var common = require('./common.js'),
-        parser = require('./parser.js');
+        parser = require('./parser.js'),
+        contextManager = require('./context-manager.js');
 
     /**
      * Applies the extension arguments to the config. This creates a completely new object
@@ -21059,12 +21186,11 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
      * @param {object} config The config to extend
      * @param {array} levels The levels to extend the config by.
      * @param {object} options The options to apply when extending config.
-     *  * readOnly - Whether all properties will be set to readOnly
-     *  * protectStructure - Whether to make properties non-configurable
+     *      * {boolean} readOnly - Whether all properties will be set to readOnly
+     *      * {boolean} protectStructure - Whether to make properties non-configurable
      */
     function load(config, levels, options) {
-        var locals, locsArr, envs, envsArr, objs, updates, i, result;
-
+        var locals, locsArr, envs, envsArr, objs, updates, i, result, cache, cman;
         options = options || {};
         locals = new WeakMap();
         locsArr = [];
@@ -21073,13 +21199,21 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
         objs = new WeakMap();
         updates = {};
 
-        if (Array.isArray(levels)) {
+        cman = config[parser.PROPERTY_SYMBOL_CONTEXT];
+        if (!cman) {
+            cman = contextManager(config);
+        }
+
+        result = config;
+        if (Array.isArray(levels) && levels.length) {
+            // prepareLevelProcess(levels[0]);
+            cache = new WeakMap();
             result = processLevel(config, levels[0]);
             for (i = 1; i < levels.length; i++) {
+                // prepareLevelProcess(levels[i]);
+                cache = new WeakMap();
                 result = processLevel(result, levels[i]);
             }
-        } else {
-            result = config;
         }
         return result;
 
@@ -21092,9 +21226,16 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
             } else if (isObj(level)) {
                 return processLevel({}, level);
             } else if (Array.isArray(level)) {
-                return level.map(function (e) {
-                    return load({}, e, options);
+                var res = level.map(function (e) {
+                    return processLevel({}, e);
                 });
+                Object.defineProperty(res, parser.PROPERTY_SYMBOL_CONTEXT, {
+                    enumerable: false,
+                    value: cman,
+                    writable: !options.readOnly,
+                    configurable: !options.protectStructure
+                });
+                return res;
             } else {
                 return level;
             }
@@ -21108,75 +21249,122 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
             }
         }
 
+        function processContext(base, extend, result) {
+            var ectx, rctx, id;
+            ectx = extend[parser.PROPERTY_SYMBOL_CONTEXT];
+            if (ectx) {
+                rctx = cman.sub(ectx.name(), ectx.environment(), ectx.locals());
+            } else {
+                rctx = cman.sub();
+            }
+
+            Object.defineProperty(result, parser.PROPERTY_SYMBOL_CONTEXT, {
+                enumerable: false,
+                value: rctx,
+                writable: !options.readOnly,
+                configurable: !options.protectStructure
+            });
+
+            // Ensure environment is updated
+            rctx.update(base, result);
+            rctx.update(extend, result);
+
+            // Register if we have an id
+            if (extend[parser.PROPERTY_SYMBOL_ID]) {
+                id = extend[parser.PROPERTY_SYMBOL_ID];
+            } else if (base[parser.PROPERTY_SYMBOL_ID]) {
+                id = base[parser.PROPERTY_SYMBOL_ID];
+            }
+            if (id) {
+                rctx.register(id, result);
+                Object.defineProperty(result, parser.PROPERTY_SYMBOL_ID, {
+                    enumerable: false,
+                    value: id,
+                    writable: !options.readOnly,
+                    configurable: !options.protectStructure
+                });
+            }
+        }
+
         function objectExtend(base, extend) {
-            var result, keys, locals, env, tmp;
+            var result, cachedResult, keys;
+
+            cachedResult = cacheGet(base, extend);
+            if (cachedResult) {
+                return cachedResult;
+            }
 
             // Create the result with the base as a prototype
             result = Object.create({});
-
-            locals = processLocals(base[parser.PROPERTY_SYMBOL_LOCALS]);
-            env = processEnvironment(base[parser.PROPERTY_SYMBOL_ENVIRONMENT]);
-            if (env.source) {
-                tmp = objs.get(env.source);
-                if (tmp) {
-                    env.source = tmp;
-                }
-            }
-
-            writeLocalsAndEnvironment(result);
-
-            // Update the locals and environment
-            update();
+            processContext(base, extend, result);
+            cacheSet(base, extend, result);
 
             // Now we are ready to process the keys.
             keys = allKeys(base, extend);
             keys.forEach(processKey);
             Object.setPrototypeOf(result, base);
+
+            if (result[parser.PROPERTY_SYMBOL_ID] && !result.hasOwnProperty(parser.PROPERTY_ID)) {
+                result[parser.PROPERTY_ID] = result[parser.PROPERTY_SYMBOL_ID];
+            }
+
             return result;
 
-            function update() {
-                var id = base[parser.PROPERTY_SYMBOL_ID];
-                if (id) {
-                    updateId(id, base, result);
-                }
-                id = extend[parser.PROPERTY_SYMBOL_ID];
-                if (id) {
-                    updateId(id, extend, result);
+            function cacheGet(base, extend) {
+                var cachedResult, extendCachedResult;
+                cachedResult = cache.get(base);
+                if (cachedResult) {
+                    extendCachedResult = cachedResult.get(extend);
+                    if (extendCachedResult) {
+                        return extendCachedResult;
+                    }
                 }
             }
 
-            function updateId(id, obj, updated) {
-                var i, target;
-                target = Object.getPrototypeOf(Object.getPrototypeOf(updated)).id;
-                for (i = 0; i < locsArr.length; i++) {
-                    if (obj && locsArr[i][id] === obj) {
-                        locsArr[i][id] = updated;
-                        updates[id] = updated;
-                    }
+            function cacheSet(base, extend, value) {
+                var cachedResult;
+                cachedResult = cache.get(base);
+                if (!cachedResult) {
+                    cachedResult = new WeakMap();
+                    cache.set(base, cachedResult);
                 }
-                for (i = 0; i < envsArr.length; i++) {
-                    if (obj && envsArr[i][id] === obj) {
-                        envsArr[i][id] = updated;
-                        updates[id] = updated;
-                    }
-                }
+                cachedResult.set(extend, value);
             }
 
             /** Processes an individual key */
             function processKey(k) {
-                var bt = common.typeOf(base[k]),
-                    et = common.typeOf(extend[k]),
-                    def = Object.getOwnPropertyDescriptor(extend, k);
+                var bt, et, def;
 
-                // If we have an accessor, we just copy it onto the result
-                if (def && !def.hasOwnProperty('value')) {
+                def = Object.getOwnPropertyDescriptor(extend, k);
+
+                // If we have an accessor, we just copy it onto the result, unless it
+                //  is an object which we then recursively process and define as a normal
+                //  value property
+                // TODO: This is not working well.....
+                if (def && def.get && def.get[module.exports.PROPERTY_SYMBOL_CUSTOM]) {
+                    if (extend[k] && _typeof(extend[k]) === 'object') {
+                        def.value = processLevel(base[k], extend[k]);
+                        delete def.get;
+                        delete def.set;
+                    }
+                    Object.defineProperty(result, k, def);
+                    return;
+                } else if (def && def.get) {
                     Object.defineProperty(result, k, def);
                     return;
                 }
+
                 def = undefined;
-                if (!et.hasOwnProperty(k)) {
+                bt = common.typeOf(base[k]);
+                et = common.typeOf(extend[k]);
+                if (!extend.hasOwnProperty(k)) {
                     def = Object.getOwnPropertyDescriptor(base, k);
                     if (def && !def.hasOwnProperty('value')) {
+                        if (base[k] && _typeof(base[k]) === 'object') {
+                            def.value = processExtendObject(base[k]);
+                            delete def.get;
+                            delete def.set;
+                        }
                         Object.defineProperty(result, k, def);
                         return;
                     }
@@ -21213,9 +21401,7 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
                 }
 
                 function processExtendObject(extend) {
-                    var tmp = {};
-                    writeLocalsAndEnvironment(tmp);
-                    return processLevel(tmp, extend);
+                    return processLevel({}, extend);
                 }
 
                 function setResultValue(result, name, value) {
@@ -21227,75 +21413,32 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
                     });
                 }
             }
-
-            function writeLocalsAndEnvironment(obj) {
-                // Add the locals and environment
-                Object.defineProperty(obj, parser.PROPERTY_SYMBOL_LOCALS, {
-                    enumerable: false,
-                    value: locals,
-                    writable: !options.readOnly,
-                    configurable: !options.protectStructure
-                });
-                Object.defineProperty(obj, parser.PROPERTY_SYMBOL_ENVIRONMENT, {
-                    enumerable: false,
-                    value: env,
-                    writable: !options.readOnly,
-                    configurable: !options.protectStructure
-                });
-            }
-        }
-
-        function processLocals(locs) {
-            var res;
-            if (locs && (typeof locs === 'undefined' ? 'undefined' : _typeof(locs)) === 'object') {
-                res = locals.get(locs);
-                if (!res) {
-                    res = Object.assign({}, locs);
-                    locsArr.push(res);
-                    Object.assign(res, updates);
-                    locals.set(locs, res);
-                }
-            } else {
-                res = {};
-            }
-            return res;
-        }
-
-        function processEnvironment(env) {
-            var res;
-            if (env && (typeof env === 'undefined' ? 'undefined' : _typeof(env)) === 'object') {
-                res = envs.get(env);
-                if (!res) {
-                    res = Object.assign({}, env);
-                    envsArr.push(res);
-                    Object.assign(res, updates);
-                    envs.set(env, res);
-                }
-            } else {
-                res = {};
-            }
-            return res;
         }
 
         function arrayExtend(base, extend) {
-            var commands;
+            var commands, res, i;
             if (typeof module.exports.COMMAND_CHECK === 'function') {
                 commands = module.exports.COMMAND_CHECK(extend);
                 if (commands) {
-                    return applyCommands(base.slice(), commands);
+                    res = base.slice();
+                    processContext(base, extend, res);
+                    return applyCommands(res, commands);
                 }
             }
-            return extend.map(function (e) {
-                return processLevel({}, e);
-            });
+            res = [];
+            processContext(base, extend, res);
+            for (i = 0; i < extend.length; i++) {
+                res.push(processLevel({}, extend[i]));
+            }
+            return res;
         }
 
         /** Applies the commands to the base array. */
         function applyCommands(base, commands) {
             // We need to operate on a copy of base.
-            base = base.map(function (e) {
-                return processLevel({}, e);
-            });
+            for (var _i = 0; _i < base.length; _i++) {
+                base[_i] = processLevel({}, base[_i]);
+            }
             commands.forEach(applyCommand);
             return base;
 
@@ -21305,6 +21448,20 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
                 switch (command.action) {
                     case 'add':
                         base.push(command.value);
+                        break;
+                    case 'insert':
+                        if (command.find) {
+                            index = find(command.find);
+                            if (index > -1) {
+                                if (command.after) {
+                                    base.splice(index + 1, 0, command.value);
+                                } else {
+                                    base.splice(index, 0, command.value);
+                                }
+                            }
+                        } else {
+                            console.warn('No find parameters specified');
+                        }
                         break;
                     case 'remove':
                         if (command.find) {
@@ -21404,7 +21561,7 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
     }
 })(module);
 
-},{"./common.js":58,"./parser.js":63}],62:[function(require,module,exports){
+},{"./common.js":58,"./context-manager.js":59,"./parser.js":64}],63:[function(require,module,exports){
 'use strict';
 
 var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
@@ -21443,22 +21600,16 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
      *  before being assigned.
      * @param {object} options The options for the loader. This can contain the following:
      *      * {string} name The name of the import function. Defaults to "$import"
-     *      * {object} source Defaults to false. true To pass the root of the config as an
-     *          environment variable named source to the loaded files. If this is a function it
-     *          will be passed the loader location to filter which items will be passed the source
-     *          property.
-     *      * {object} locals - Defaults to false. true to pass the objects associated with any ids
-     *          to the loaded config. If this is a function it will be passed the loader location
-     *          to filter which items will be passed the locals.
-     *      * environment - The environment variables to pass to the parser.
-     *      * protectStructure - Ensures all properties are non configurable.
-     *      * readOnly - Ensures all created properties are read only. Note: This will not apply
-     *          to existing properties on config.
+     *      * {object} environment - The environment variables to pass to the parser.
+     *      * {boolean} protectStructure - Ensures all properties are non configurable.
+     *      * {boolean} readOnly - Ensures all created properties are read only. Note: This will
+     *          not apply to existing properties on config.
+     *      * {string} context - Context informaiton to pass on errors.
      * @returns {promise} A promise which will be resolved with the config object once all includes
      *  have been loaded.
      */
     function process(str, loader, options) {
-        var imports;
+        var imports, config;
         return new Promise(function (resolve, reject) {
             if (typeof loader !== 'function') {
                 throw new Error('loader MUST be a function');
@@ -21472,18 +21623,16 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
 
             imports = [];
             try {
-                (function () {
-                    var config = parser(str, options);
-                    Promise.all(imports).then(function () {
-                        resolve(config);
-                    }).catch(reject);
-                })();
+                config = parser(str, options);
+                Promise.all(imports).then(function () {
+                    return resolve(config);
+                }).catch(reject);
             } catch (ex) {
                 reject(ex);
             }
         });
 
-        function handleCustomExpression(block, source, environment, locals) {
+        function handleCustomExpression(block) {
             var imported, location;
             if (block.type === 'CallExpression' && block.callee.name === options.name) {
                 if (block.arguments[0] && block.arguments[0].type === 'Literal') {
@@ -21504,66 +21653,50 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
             function doImport(location) {
                 var prom = loader(location);
                 if (prom instanceof Promise) {
-                    imports.push(prom.then(processLoaderResult));
+                    imports.push(prom.then(function (data) {
+                        return processLoaderResult(location, data);
+                    }));
                 } else {
-                    processLoaderResult(prom);
+                    // Note: We need to be in next tick to process since we need a
+                    //  copy of the context manager when processing and for that we need the
+                    //  current execution stack to complete
+                    imports.push(oneTick().then(function () {
+                        return processLoaderResult(location, prom);
+                    }));
                 }
+            }
+
+            function oneTick() {
+                return new Promise(function (resolve) {
+                    resolve();
+                });
             }
 
             /**
              * Processes the return value from the loader.
              */
-            function processLoaderResult(data) {
-                var env, opts;
+            function processLoaderResult(location, data) {
                 if (typeof data !== 'string') {
                     imported = data;
-                    return;
+                    return Promise.resolve();
                 }
-                env = {};
-                if (assignAdditional('source', location)) {
-                    env.source = source;
-                }
-                if (assignAdditional('locals', location)) {
-                    if (common.isObject(locals)) {
-                        common.extend(env, locals);
-                    }
-                }
-
-                common.extend(env, environment);
-                if (options.environment && _typeof(options.environment) === 'object') {
-                    common.extend(env, environment, options.environment);
-                }
-
-                opts = {
-                    environment: env,
-                    // These will be done later, if necessary
+                var opts = {
+                    environment: options.environment,
                     readOnly: options.readOnly,
                     protectStructure: options.protectStructure,
-                    custom: handleCustomExpression
+                    custom: handleCustomExpression,
+                    context: location,
+                    contextManager: config[parser.PROPERTY_SYMBOL_CONTEXT]
                 };
                 return process(data, loader, opts).then(function (cfg) {
                     imported = cfg;
                 });
             }
         }
-
-        /**
-         * Assigns one of the additional properties, first checking if it is a
-         *   function, and using it as a filter if it is.
-         * @param {string} name The name of the additional property to assign.
-         */
-        function assignAdditional(name, location) {
-            var isFunc = typeof options[name] === 'function';
-            if (isFunc) {
-                return !!options[name](location);
-            } else {
-                return !!options[name];
-            }
-        }
     }
 })(module);
 
-},{"./common.js":58,"./parser":63}],63:[function(require,module,exports){
+},{"./common.js":58,"./parser":64}],64:[function(require,module,exports){
 'use strict';
 
 var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
@@ -21578,14 +21711,22 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
     // Public API
 
     module.exports = parse;
+
+    // Dependencies
+    var contextManager = require('./context-manager.js');
+
     // Constants
     module.exports.PROPERTY_ID = 'id'; // This identifies the name of the id property when parsing.
     module.exports.PROPERTY_SYMBOL_ID = Symbol('id');
-    module.exports.PROPERTY_SYMBOL_ENVIRONMENT = Symbol('environment');
-    module.exports.PROPERTY_SYMBOL_LOCALS = Symbol('locals');
+    module.exports.PROPERTY_SYMBOL_CUSTOM = Symbol('custom');
+    module.exports.PROPERTY_SYMBOL_CONTEXT = Symbol('context');
+    // module.exports.PROPERTY_SYMBOL_ENVIRONMENT = Symbol('environment');
+    // module.exports.PROPERTY_SYMBOL_LOCALS = Symbol('locals');
     module.exports.PROPERTY_BASE_NAME = 'base';
     module.exports.VALID_GLOBALS = ['Infinity', 'NaN', 'undefined', 'Object', 'Number', 'String', 'RegExp', 'Boolean', 'Array', 'Error', 'EvalError', 'InternalError', 'RangeError', 'ReferenceError', 'SyntaxError', 'TypeError', 'URIError', 'Math', 'Date', 'isFinite', 'isNaN', 'parseFloat', 'parseInt', 'decodeURI', 'decodeURIComponent', 'encodeURI', 'encodeURIComponent', 'escape', 'unescape'];
     module.exports.ILLEGAL_GLOBALS = ['eval', 'Function'];
+
+    var CONSTANT_INVALID = ['Identifier', 'ThisExpression'];
 
     // Dependencies
     var esprima = require('esprima'),
@@ -21607,12 +21748,12 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
     *           prototype properties over locals and environment.
     *       * {function} custom - A function to call that allows custom expressions functions
     *           to be constructed.
+    *       * {string} context Additional context to be provided in any errors.
+    *       * {object} contextManager Optional contextManager instead of creating a new one
     * @throws {error} When str is not a string.
     */
     function parse(str, options) {
-        var code,
-            config,
-            locals = {};
+        var code, config, cman, placeholder;
 
         // Ensure the data is valid
         if (typeof str !== 'string') {
@@ -21632,28 +21773,58 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
             options.environment = {};
         }
 
-        // Wrap to force expression
-        str = '(' + str + ')';
-
         // Get an AST representing the configuration
-        code = esprima.parse(str, {
-            loc: true
-        });
+        try {
+            // Wrap to force expression
+            code = esprima.parse('(' + str + ')', {
+                loc: true
+            });
+        } catch (ex) {
+            try {
+                // Retry wrapped as object.
+                code = esprima.parse('({' + str + '})', {
+                    loc: true
+                });
+            } catch (ex2) {
+                // Preserve original exception.
+                throw ex;
+            }
+        }
 
         // Extract the root node.
         code = code.body[0].expression;
 
+        // Create the context manager
+        if (options.contextManager && typeof options.contextManager.sub === 'function') {
+            cman = options.contextManager.sub(options.context, options.environment);
+        } else {
+            placeholder = {};
+            cman = contextManager(placeholder, options.context, options.environment);
+        }
+
         // Check the root type, and make sure we have an object
         //   or an array.
+        var result;
         switch (code.type) {
             case 'ObjectExpression':
-                return parseObject(code, true);
+                result = parseObject(code);
+                break;
             case 'ArrayExpression':
-                return parseArray(code, true);
+                result = parseArray(code);
+                break;
+            case 'SequenceExpression':
+                // Convert to an array expression
+                code.type = 'ArrayExpression';
+                code.elements = code.expressions;
+                delete code.expressions;
+                result = parseArray(code, true);
+                break;
             default:
                 var msg = 'configuration MUST have an object or array as the root element. ' + ('Got "' + code.type + '".');
                 throw new Error(errorMessage(msg, code));
         }
+        cman.update(placeholder, result);
+        return result;
 
         /** Returns the value represented by the supplied literal block */
         function parseLiteral(block) {
@@ -21740,12 +21911,32 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
         * @param {object} block The ArrayExpression to parse.
         * @returns {array} The Array representing the supplied block.
         */
-        function parseArray(block, initial) {
+        function parseArray(block) {
             var arr = [];
-            if (initial) {
+            if (!config) {
                 config = arr;
             }
+
+            // We always want a context manager on the root.
+            if (module.exports.PROPERTY_SYMBOL_CONTEXT) {
+                Object.defineProperty(arr, module.exports.PROPERTY_SYMBOL_CONTEXT, {
+                    enumerable: false,
+                    value: cman,
+                    writable: !options.readOnly,
+                    configurable: !options.protectStructure
+                });
+            }
             block.elements.forEach(mapVal);
+
+            // We do this so we can handle expressions in arrays
+            if (arr.some(function (e) {
+                return typeof e === 'function';
+            })) {
+                arr = new Proxy(arr, {
+                    get: get
+                });
+            }
+
             return arr;
 
             /** Calls parseblock with the array as the second arg */
@@ -21753,43 +21944,47 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
                 var parsed = parseBlock(block);
                 arr.push(parsed);
             }
+
+            function get(target, prop) {
+                prop = parseInt(prop, 10);
+                if (Number.isInteger(prop) && typeof target[prop] === 'function') {
+                    return target[prop].apply(target);
+                } else {
+                    return target[prop];
+                }
+            }
         }
 
         /**
         * Parses the supplied block
         * @param {object} block The block representing the object
         */
-        function parseObject(block, initial) {
+        function parseObject(block) {
             var idprop, result, props;
 
             result = {};
-            if (initial) {
+            if (!config) {
                 config = result;
-            }
-
-            // Add locals via symbol.
-            if (module.exports.PROPERTY_SYMBOL_LOCALS) {
-                Object.defineProperty(result, module.exports.PROPERTY_SYMBOL_LOCALS, {
-                    enumerable: false,
-                    value: locals,
-                    writable: !options.readOnly,
-                    configurable: !options.protectStructure
-                });
-            }
-            // Add environment variables via symbol.
-            if (module.exports.PROPERTY_SYMBOL_ENVIRONMENT) {
-                Object.defineProperty(result, module.exports.PROPERTY_SYMBOL_ENVIRONMENT, {
-                    enumerable: false,
-                    value: options.environment,
-                    writable: !options.readOnly,
-                    configurable: !options.protectStructure
-                });
             }
 
             // Parse all the properties
             props = block.properties
             // This applies the filtered properties to the prototype.
-            .filter(processId).map(parseProperty);
+            .filter(processId);
+            props = props.map(parseProperty);
+
+            if (result[module.exports.PROPERTY_SYMBOL_ID]) {
+                cman.register(result[module.exports.PROPERTY_SYMBOL_ID], result);
+            }
+
+            if (module.exports.PROPERTY_SYMBOL_CONTEXT) {
+                Object.defineProperty(result, module.exports.PROPERTY_SYMBOL_CONTEXT, {
+                    enumerable: false,
+                    value: cman,
+                    writable: !options.readOnly,
+                    configurable: !options.protectStructure
+                });
+            }
 
             // Assign the properties to the object
             props.forEach(assignProp);
@@ -21817,11 +22012,6 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
                 if (prop.type === 'Property') {
                     name = propName(prop.key);
                     if (name === module.exports.PROPERTY_ID && prop.value.type === 'Identifier') {
-                        if (locals.hasOwnProperty(prop.value.name)) {
-                            throw new Error(errorMessage('duplicate id "' + prop.value.name + '"', prop));
-                        } else {
-                            locals[prop.value.name] = result;
-                        }
                         Object.defineProperty(result, module.exports.PROPERTY_SYMBOL_ID, {
                             enumerable: false,
                             value: prop.value.name,
@@ -21886,6 +22076,9 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
                     definition.get = function getValue() {
                         return prop.value.call(this, context);
                     };
+                    if (prop.value[module.exports.PROPERTY_SYMBOL_CUSTOM]) {
+                        definition.get[module.exports.PROPERTY_SYMBOL_CUSTOM] = true;
+                    }
                 } else {
                     definition.writable = !options.readOnly;
                     definition.value = prop.value;
@@ -21906,8 +22099,7 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
                 */
                 function context(name, nothrow) {
                     var proto = Object.getPrototypeOf(this),
-                        locals = this[module.exports.PROPERTY_SYMBOL_LOCALS],
-                        environment = this[module.exports.PROPERTY_SYMBOL_ENVIRONMENT],
+                        context = this[module.exports.PROPERTY_SYMBOL_CONTEXT],
                         value;
                     // If prototype is prefered check the entire chain for the property
                     if (options.preferPrototype && name in this) {
@@ -21915,12 +22107,10 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
                     } else if (this.hasOwnProperty(name)) {
                         // Otherwise just the object
                         value = this[name];
-                    } else if (isObject(locals) && locals.hasOwnProperty(name)) {
-                        // Coming from an object in the config file with an id property.
-                        value = locals[name];
-                    } else if (isObject(environment) && environment.hasOwnProperty(name)) {
-                        // Coming from the consumer supplied globals
-                        value = environment[name];
+                    } else if (context.hasValue(name)) {
+                        // Coming from an object in the config file with an id property,
+                        //  or a value supplied as environment
+                        value = context.value(name);
                     } else if (name === module.exports.PROPERTY_BASE_NAME) {
                         value = proto && proto[prop.name];
                     } else if (name in this) {
@@ -21931,7 +22121,14 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
                         // Things like typeof
                         value = undefined;
                     } else {
-                        throw new Error('identifier named "' + name + '" has not been declared!');
+                        var _msg3 = 'identifier named "' + name + '" has not been declared!';
+                        if (context && typeof context.name === 'function') {
+                            var cname = context.name();
+                            if (cname) {
+                                _msg3 += '. ' + cname;
+                            }
+                        }
+                        throw new Error(_msg3);
                     }
                     return value;
                 }
@@ -21948,16 +22145,23 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
             var body,
                 func,
                 res,
+                haveCustom,
                 block = oblock;
 
             // Get the possible custom expression function.
-            func = customProcess(block, config, options.environment, locals);
+            func = customProcess(block, cman);
 
-            // Process normally if we did not get a function back.
-            if (typeof func !== 'function') {
+            if (typeof func === 'function') {
+                haveCustom = true;
+            } else {
                 // Ensure we are not doing something invalid.
                 validateBlock(block);
+            }
 
+            if (!haveCustom && isConstantExpression(block)) {
+                return constantExpression(block);
+            } else if (!haveCustom) {
+                // Process normally if we did not get a function back.
                 // Process the identifiers
                 block = processIdentifiers(block);
 
@@ -21986,6 +22190,10 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
                 return val;
             };
 
+            if (haveCustom) {
+                res[module.exports.PROPERTY_SYMBOL_CUSTOM] = true;
+            }
+
             return res;
 
             /** Ensures blocks are valid */
@@ -21994,8 +22202,8 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
                 if (obj && (typeof obj === 'undefined' ? 'undefined' : _typeof(obj)) === 'object') {
                     if (obj.type) {
                         if (!blockSupported(obj)) {
-                            var _msg3 = '"' + obj.type + '" block is illegal in expressions.';
-                            throw new Error(errorMessage(_msg3, obj));
+                            var _msg4 = '"' + obj.type + '" block is illegal in expressions.';
+                            throw new Error(errorMessage(_msg4, obj));
                         }
                     }
                     keys = Object.keys(obj).forEach(val);
@@ -22006,6 +22214,37 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
                     validateBlock(obj[name]);
                 }
             }
+        }
+
+        function isConstantExpression(exp) {
+            if (CONSTANT_INVALID.indexOf(exp.type) > -1) {
+                return false;
+            }
+            return Object.keys(exp).every(function (k) {
+                return processVal(exp[k]);
+            });
+            function processVal(val) {
+                if (Array.isArray(val)) {
+                    return val.every(processVal);
+                } else if (val && (typeof val === 'undefined' ? 'undefined' : _typeof(val)) === 'object') {
+                    return isConstantExpression(val);
+                } else if (typeof val === 'function') {
+                    return false;
+                } else {
+                    return true;
+                }
+            }
+        }
+
+        function constantExpression(exp) {
+            var func, body;
+            exp = {
+                type: 'ReturnStatement',
+                argument: exp
+            };
+            body = escodegen.generate(exp);
+            func = new Function([], body); // jshint ignore:line
+            return func();
         }
 
         /** Attempts to add line and column information to an error */
@@ -22048,8 +22287,8 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
                         throw new Error('Critical error. Invalid program!');
                 }
             } else {
-                var _msg4 = 'blocks of type "' + block.type + '\'" not supported';
-                throw new Error(errorMessage(_msg4, block));
+                var _msg5 = 'blocks of type "' + block.type + '\'" not supported';
+                throw new Error(errorMessage(_msg5, block));
             }
         }
 
@@ -22104,8 +22343,8 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
 
                 default:
                     // TODO: Should an error be thrown here? Not very forwards compatible...
-                    var _msg5 = 'unrecognized block type "' + block.type + '"';
-                    throw new Error(errorMessage(_msg5, block));
+                    var _msg6 = 'unrecognized block type "' + block.type + '"';
+                    throw new Error(errorMessage(_msg6, block));
             }
         }
 
@@ -22228,9 +22467,9 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
                     if (module.exports.VALID_GLOBALS.indexOf(block.name) > -1) {
                         return false;
                     } else if (module.exports.ILLEGAL_GLOBALS.indexOf(block.name) > -1) {
-                        var _msg6 = 'use of "' + block.name + '" is illegal';
-                        _msg6 = errorMessage(_msg6, block);
-                        throw new Error(_msg6);
+                        var _msg7 = 'use of "' + block.name + '" is illegal';
+                        _msg7 = errorMessage(_msg7, block);
+                        throw new Error(_msg7);
                     } else {
                         return true;
                     }
@@ -22246,6 +22485,13 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
             } else {
                 pos = '';
             }
+            msg = msg + pos;
+            if (options.context) {
+                if (msg) {
+                    msg = msg + '. ';
+                }
+                msg += options.context;
+            }
             return msg + pos;
         }
 
@@ -22255,9 +22501,9 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
         }
 
         /** Called to perform custom processing of a block. */
-        function customProcess(block, config, environment, locals) {
+        function customProcess(block, contextManager) {
             if (options.custom && typeof options.custom === 'function') {
-                return options.custom(block, config, environment, locals);
+                return options.custom(block, contextManager);
             } else {
                 return false;
             }
@@ -22265,4 +22511,4 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
     }
 })(module);
 
-},{"./common.js":58,"escodegen":9,"esprima":11}]},{},[60]);
+},{"./common.js":58,"./context-manager.js":59,"escodegen":9,"esprima":11}]},{},[61]);
