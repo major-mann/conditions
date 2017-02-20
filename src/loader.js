@@ -63,7 +63,7 @@
             }
         });
 
-        function handleCustomExpression(block, contextManager) {
+        function handleCustomExpression(block) {
             var imported, location;
             if (block.type === 'CallExpression' && block.callee.name === options.name) {
                 if (block.arguments[0] && block.arguments[0].type === 'Literal') {

@@ -1,5 +1,7 @@
 describe('levels', function () {
-    var levels, parse, fs = require('fs');
+    'use strict';
+
+    var parse, extend, fs = require('fs');
 
     beforeEach(function () {
         delete require.cache[require.resolve('../src/levels.js')];
@@ -10,27 +12,27 @@ describe('levels', function () {
 
     describe('checks', function () {
         it('should return the supplied config value if it is not an object or array', function () {
-            expect(extend('foo')).toBe('foo');
-            expect(extend(1234)).toBe(1234);
-            expect(extend(false)).toBe(false);
+            expect(extend('foo')).to.equal('foo');
+            expect(extend(1234)).to.equal(1234);
+            expect(extend(false)).to.equal(false);
         });
         it('should return the config if the supplied levels argument is not an array', function () {
-            expect(extend({}, 'foo')).toEqual(jasmine.any(Object));
-            expect(extend({}, 123)).toEqual(jasmine.any(Object));
+            expect(extend({}, 'foo')).to.be.an('object');
+            expect(extend({}, 123)).to.be.an('object');
         });
     });
 
     describe('extend', function () {
         it('should replace the object if a level value type is received', function () {
             var res = extend({}, ['foo', 1234, {}, true, 'bar']);
-            expect(res).toBe('bar');
+            expect(res).to.equal('bar');
         });
         it('should not modify the originally supplied object', function () {
             var config = {},
                 ext = {},
                 result;
             result = extend(config, [ext]);
-            expect(result).not.toBe(config);
+            expect(result).not.to.equal(config);
         });
         it('should add properties to the underlying object', function () {
             var config = {},
@@ -40,8 +42,8 @@ describe('levels', function () {
                 },
                 result;
             result = extend(config, [ext]);
-            expect(result.foo).toBe('bar');
-            expect(result.hello).toBe('world');
+            expect(result.foo).to.equal('bar');
+            expect(result.hello).to.equal('world');
         });
         it('delete properties extended if they are undefined', function () {
             var config = { 'test': 'value' },
@@ -52,13 +54,13 @@ describe('levels', function () {
                 },
                 result;
             result = extend(config, [ext]);
-            expect(result.foo).toBe('bar');
-            expect(result.hello).toBe('world');
-            expect(Object.keys(result).indexOf('test') === -1).toBe(true);
-            expect(result.test).toBe(undefined);
+            expect(result.foo).to.equal('bar');
+            expect(result.hello).to.equal('world');
+            expect(Object.keys(result).indexOf('test') === -1).to.equal(true);
+            expect(result.test).to.equal(undefined);
         });
         it('should deep extend the properties', function () {
-            var config, ext, keys;
+            var config, ext, keys, result;
 
             config = {
                 section: {
@@ -89,21 +91,21 @@ describe('levels', function () {
             });
 
             result = extend(config, [ext]);
-            expect(result.section).toEqual(jasmine.any(Object));
-            expect(result.section.subsection).toEqual(jasmine.any(Object));
-            expect(result.section2).toEqual(jasmine.any(Object));
-            expect(result.section.value1).toBe('a');
-            expect(result.section.value2).toBe('d');
-            expect(result.section.subsection.value3).toBe('c');
-            expect(result.section.subsection.value4).toBe('e');
-            expect(result.section2.foo).toBe('bar');
-            expect(result.test).toBe(10);
+            expect(result.section).to.be.an('object');
+            expect(result.section.subsection).to.be.an('object');
+            expect(result.section2).to.be.an('object');
+            expect(result.section.value1).to.equal('a');
+            expect(result.section.value2).to.equal('d');
+            expect(result.section.subsection.value3).to.equal('c');
+            expect(result.section.subsection.value4).to.equal('e');
+            expect(result.section2.foo).to.equal('bar');
+            expect(result.test).to.equal(10);
 
             keys = Object.keys(result.section);
-            expect(keys.length).toBe(3);
-            expect(keys.indexOf('value1') > -1).toBe(true);
-            expect(keys.indexOf('value2') > -1).toBe(true);
-            expect(keys.indexOf('subsection') > -1).toBe(true);
+            expect(keys.length).to.equal(3);
+            expect(keys.indexOf('value1') > -1).to.equal(true);
+            expect(keys.indexOf('value2') > -1).to.equal(true);
+            expect(keys.indexOf('subsection') > -1).to.equal(true);
         });
 
         it('should extend an array', function () {
@@ -111,11 +113,11 @@ describe('levels', function () {
                 commands = [{ $: { action: 'remove', find: 2 } }],
                 result;
             result = extend(config, [commands]);
-            expect(result.length).toBe(4);
-            expect(result[0]).toBe(1);
-            expect(result[1]).toBe(3);
-            expect(result[2]).toBe(4);
-            expect(result[3]).toBe(5);
+            expect(result.length).to.equal(4);
+            expect(result[0]).to.equal(1);
+            expect(result[1]).to.equal(3);
+            expect(result[2]).to.equal(4);
+            expect(result[3]).to.equal(5);
         });
 
         describe('array commands', function () {
@@ -130,10 +132,10 @@ describe('levels', function () {
                     ]
                 };
                 result = extend(config, [ext]);
-                expect(result.vals).toEqual(jasmine.any(Array));
-                expect(result.vals.length).toBe(2);
-                expect(result.vals[0]).toBe(1);
-                expect(result.vals[1]).toEqual(jasmine.any(Object));
+                expect(result.vals).to.be.an('array');
+                expect(result.vals.length).to.equal(2);
+                expect(result.vals[0]).to.equal(1);
+                expect(result.vals[1]).to.be.an('object');
             });
             it('should allow elements to be searched by reference', function () {
                 var config, ext, result;
@@ -146,12 +148,12 @@ describe('levels', function () {
                     ]
                 };
                 result = extend(config, [ext]);
-                expect(result.vals).toEqual(jasmine.any(Array));
-                expect(result.vals.length).toBe(4);
-                expect(result.vals[0]).toBe(1);
-                expect(result.vals[1]).toBe(3);
-                expect(result.vals[2]).toBe(4);
-                expect(result.vals[3]).toBe(5);
+                expect(result.vals).to.be.an('array');
+                expect(result.vals.length).to.equal(4);
+                expect(result.vals[0]).to.equal(1);
+                expect(result.vals[1]).to.equal(3);
+                expect(result.vals[2]).to.equal(4);
+                expect(result.vals[3]).to.equal(5);
             });
             it('should allow elements to be searched by property values', function () {
                 var config, ext, result;
@@ -164,12 +166,12 @@ describe('levels', function () {
                     ]
                 };
                 result = extend(config, [ext]);
-                expect(result.vals).toEqual(jasmine.any(Array));
-                expect(result.vals.length).toBe(4);
-                expect(result.vals[0].id).toBe(1);
-                expect(result.vals[1].id).toBe(3);
-                expect(result.vals[2].id).toBe(4);
-                expect(result.vals[3].id).toBe(5);
+                expect(result.vals).to.be.an('array');
+                expect(result.vals.length).to.equal(4);
+                expect(result.vals[0].id).to.equal(1);
+                expect(result.vals[1].id).to.equal(3);
+                expect(result.vals[2].id).to.equal(4);
+                expect(result.vals[3].id).to.equal(5);
             });
             it('should allow elements to be added', function () {
                 var config, ext, result;
@@ -182,14 +184,14 @@ describe('levels', function () {
                     ]
                 };
                 result = extend(config, [ext]);
-                expect(result.vals).toEqual(jasmine.any(Array));
-                expect(result.vals.length).toBe(6);
-                expect(result.vals[0]).toBe(1);
-                expect(result.vals[1]).toBe(2);
-                expect(result.vals[2]).toBe(3);
-                expect(result.vals[3]).toBe(4);
-                expect(result.vals[4]).toBe(5);
-                expect(result.vals[5]).toBe(6);
+                expect(result.vals).to.be.an('array');
+                expect(result.vals.length).to.equal(6);
+                expect(result.vals[0]).to.equal(1);
+                expect(result.vals[1]).to.equal(2);
+                expect(result.vals[2]).to.equal(3);
+                expect(result.vals[3]).to.equal(4);
+                expect(result.vals[4]).to.equal(5);
+                expect(result.vals[5]).to.equal(6);
             });
             it('should allow elements to be removed', function () {
                 var config, ext, result;
@@ -202,12 +204,12 @@ describe('levels', function () {
                     ]
                 };
                 result = extend(config, [ext]);
-                expect(result.vals).toEqual(jasmine.any(Array));
-                expect(result.vals.length).toBe(4);
-                expect(result.vals[0]).toBe(1);
-                expect(result.vals[1]).toBe(3);
-                expect(result.vals[2]).toBe(4);
-                expect(result.vals[3]).toBe(5);
+                expect(result.vals).to.be.an('array');
+                expect(result.vals.length).to.equal(4);
+                expect(result.vals[0]).to.equal(1);
+                expect(result.vals[1]).to.equal(3);
+                expect(result.vals[2]).to.equal(4);
+                expect(result.vals[3]).to.equal(5);
             });
             it('should allow elements to be replaced', function () {
                 var config, ext, result;
@@ -220,13 +222,13 @@ describe('levels', function () {
                     ]
                 };
                 result = extend(config, [ext]);
-                expect(result.vals).toEqual(jasmine.any(Array));
-                expect(result.vals.length).toBe(5);
-                expect(result.vals[0]).toBe(1);
-                expect(result.vals[1]).toBe(10);
-                expect(result.vals[2]).toBe(3);
-                expect(result.vals[3]).toBe(4);
-                expect(result.vals[4]).toBe(5);
+                expect(result.vals).to.be.an('array');
+                expect(result.vals.length).to.equal(5);
+                expect(result.vals[0]).to.equal(1);
+                expect(result.vals[1]).to.equal(10);
+                expect(result.vals[2]).to.equal(3);
+                expect(result.vals[3]).to.equal(4);
+                expect(result.vals[4]).to.equal(5);
             });
             it('should allow elements to be cleared', function () {
                 var config, ext, result;
@@ -239,8 +241,8 @@ describe('levels', function () {
                     ]
                 };
                 result = extend(config, [ext]);
-                expect(result.vals).toEqual(jasmine.any(Array));
-                expect(result.vals.length).toBe(0);
+                expect(result.vals).to.be.an('array');
+                expect(result.vals.length).to.equal(0);
             });
             it('should allow elements to be extended', function () {
                 var config, ext, result;
@@ -253,14 +255,14 @@ describe('levels', function () {
                     ]
                 };
                 result = extend(config, [ext]);
-                expect(result.vals).toEqual(jasmine.any(Array));
-                expect(result.vals.length).toBe(5);
-                expect(result.vals[0].id).toBe(1);
-                expect(result.vals[1].id).toBe(2);
-                expect(result.vals[2].id).toBe(3);
-                expect(result.vals[3].id).toBe(4);
-                expect(result.vals[1].foo).toEqual(jasmine.any(Object));
-                expect(result.vals[1].foo.bar).toBe('baz');
+                expect(result.vals).to.be.an('array');
+                expect(result.vals.length).to.equal(5);
+                expect(result.vals[0].id).to.equal(1);
+                expect(result.vals[1].id).to.equal(2);
+                expect(result.vals[2].id).to.equal(3);
+                expect(result.vals[3].id).to.equal(4);
+                expect(result.vals[1].foo).to.be.an('object');
+                expect(result.vals[1].foo.bar).to.equal('baz');
             });
 
             it('should set the prototypes so that base properties are available', function () {
@@ -269,10 +271,10 @@ describe('levels', function () {
                     config;
                 config = extend(lvl1, [lvl2]);
 
-                expect(config.server.domain).toBe('dev-example.com');
-                expect(config.server.url).toBe('https://dev-example.com');
+                expect(config.server.domain).to.equal('dev-example.com');
+                expect(config.server.url).to.equal('https://dev-example.com');
                 config.server.port = 8080;
-                expect(config.server.url).toBe('https://dev-example.com:8080');
+                expect(config.server.url).to.equal('https://dev-example.com:8080');
             });
         });
     });
@@ -291,10 +293,10 @@ describe('levels', function () {
             result = extend(config, [ext], { readOnly: true });
 
             def = Object.getOwnPropertyDescriptor(result, 'vals');
-            expect(def.writable).toBe(false);
+            expect(def.writable).to.equal(false);
 
             def = Object.getOwnPropertyDescriptor(result.vals[0], 'id');
-            expect(def.writable).toBe(false);
+            expect(def.writable).to.equal(false);
         });
         it('should make all properties read only when "protectStructure" is truthy', function () {
             var config, ext, result, def;
@@ -309,10 +311,10 @@ describe('levels', function () {
             result = extend(config, [ext], { protectStructure: true });
 
             def = Object.getOwnPropertyDescriptor(result, 'vals');
-            expect(def.configurable).toBe(false);
+            expect(def.configurable).to.equal(false);
 
             def = Object.getOwnPropertyDescriptor(result.vals[0], 'id');
-            expect(def.configurable).toBe(false);
+            expect(def.configurable).to.equal(false);
         });
     });
 

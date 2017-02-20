@@ -22,6 +22,27 @@ module.exports = function(grunt) {
                 }
             }
         },
+        mochaTest: {
+            spec: {
+                options: {
+                    reporter: 'spec',
+                    quiet: false,
+                    clearRequireCache: true
+                },
+                src: [
+                    'spec/**/*.js',
+                    'spec/**/*.spec.js'
+                ]
+            }
+        },
+        shell: {
+            cover: 'istanbul cover grunt test',
+            options: {
+                stdout: false,
+                stderr: false,
+                preferLocal: true
+            }
+        },
         browserify: {
             main: {
                 options: {
@@ -49,13 +70,18 @@ module.exports = function(grunt) {
     });
 
     grunt.loadNpmTasks('grunt-browserify');
+    grunt.loadNpmTasks('grunt-mocha-test');
     grunt.loadNpmTasks('grunt-contrib-concat');
     grunt.loadNpmTasks('grunt-contrib-uglify');
     grunt.loadNpmTasks('grunt-contrib-jshint');
     grunt.loadNpmTasks('grunt-jscs');
+    grunt.loadNpmTasks('grunt-shell');
 
     // Create the tasks
     grunt.registerTask('build', ['browserify:main', 'uglify:dist']);
-    grunt.registerTask('test', ['jshint:src', 'jscs:src']);
+    grunt.registerTask('check', ['jshint:src', 'jscs:src']);
+    grunt.registerTask('test', ['mochaTest:spec']);
+    grunt.registerTask('quality', ['check', 'test', 'cover']);
+    grunt.registerTask('cover', ['shell:cover']);
     grunt.registerTask('default', ['test', 'build']);
 };

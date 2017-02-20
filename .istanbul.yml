@@ -1,2 +1,2 @@
 instrumentation:
-    excludes: ['dist/**/*']
+    excludes: ['dist/**/*', 'spec/**/*']
