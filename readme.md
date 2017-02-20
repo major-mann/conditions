@@ -233,7 +233,9 @@ The following commands may be issues:
 
 # Roadmap to V1.0.0
 
-* Move across to mocha + chai testing.
+* Get 100% coverage
+* Property change events
+* Property reset and commit functions
 * Adding travis CI and codecov.io support.
 * Switch to eslint
 * Highly complex sample config
