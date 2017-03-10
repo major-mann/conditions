@@ -1,6 +1,5 @@
 /**
- * The file loader module provides file loading functionality with a common API targeting browser
- *  and node processes.
+ * The file loader module provides file loading functionality.
  */
 (function fileLoaderModule(module) {
     'use strict';
@@ -16,7 +15,8 @@
         levels = require('./levels.js'),
         http = require('http'),
         path = require('path'),
-        url = require('url');
+        url = require('url'),
+        fs = require('fs');
 
     // Assign global options to the functions
     load.warnOnError = true;
@@ -35,11 +35,7 @@
         }
 
         // Initialize the base information.
-        if (process.title === 'browser') {
-            configureBase(window.location.href);
-        } else {
-            configureBase(process.cwd());
-        }
+        configureBase(process.cwd());
 
         // Now process locations 1 at a time
         lvls = [];
@@ -145,10 +141,6 @@
 
             /** Load config from the local file system */
             function loadFs(location) {
-                // We need to do this (wrap require) so no attempt is made to bundle fs by
-                //  browserify
-                const fs = (require)('fs');
-
                 return new Promise(function (resolve, reject) {
                     fs.readFile(location, { encoding: 'utf8' }, onFileRead);
 

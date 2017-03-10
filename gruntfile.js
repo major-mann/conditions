@@ -42,43 +42,16 @@ module.exports = function(grunt) {
                 stderr: false,
                 preferLocal: true
             }
-        },
-        browserify: {
-            main: {
-                options: {
-                    transform: [
-                        ['babelify', {
-                            presets: ['es2015']
-                        }]
-                    ],
-                },
-                files: {
-                    'dist/conditions.js': ['src/index.js']
-                }
-            }
-        },
-        uglify: {
-            options: {
-                mangle: true
-            },
-            dist: {
-                files: {
-                    'dist/conditions.min.js': ['dist/conditions.js']
-                }
-            }
         }
     });
 
-    grunt.loadNpmTasks('grunt-browserify');
     grunt.loadNpmTasks('grunt-mocha-test');
     grunt.loadNpmTasks('grunt-contrib-concat');
-    grunt.loadNpmTasks('grunt-contrib-uglify');
     grunt.loadNpmTasks('grunt-contrib-jshint');
     grunt.loadNpmTasks('grunt-jscs');
     grunt.loadNpmTasks('grunt-shell');
 
     // Create the tasks
-    grunt.registerTask('build', ['browserify:main', 'uglify:dist']);
     grunt.registerTask('check', ['jshint:src', 'jscs:src']);
     grunt.registerTask('test', ['mochaTest:spec']);
     grunt.registerTask('quality', ['check', 'test', 'cover']);

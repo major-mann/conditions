@@ -10,9 +10,16 @@
     module.exports.PROPERTY_COMMAND_NAME = '$';
     module.exports.COMMAND_CHECK = defaultCommandCheck;
 
-    const common = require('./common.js'),
-        parser = require('./parser.js'),
-        contextManager = require('./context-manager.js');
+    // Constants
+    const OPTIONS = {
+        readOnly: false,
+        protectStructure: false
+    };
+
+    // Dependencies
+    const parser = require('./parser.js'),
+        configObject = require('./config-object.js'),
+        doubleCache = require('./double-cache.js');
 
     /**
      * Applies the extension arguments to the config. This creates a completely new object
@@ -25,345 +32,250 @@
      *      * {boolean} protectStructure - Whether to make properties non-configurable
      */
     function load(config, levels, options) {
-        var locals, locsArr, envs, envsArr, objs, updates, i, result, cache, cman;
-        options = options || {};
-        locals = new WeakMap();
-        locsArr = [];
-        envs = new WeakMap();
-        envsArr = [];
-        objs = new WeakMap();
-        updates = {};
+        var i, res = config;
 
-        cman = config[parser.PROPERTY_SYMBOL_CONTEXT];
-        if (!cman) {
-            cman = contextManager(config);
-        }
+        options = Object.assign({}, OPTIONS, options);
 
-        result = config;
-        if (Array.isArray(levels) && levels.length) {
-            // prepareLevelProcess(levels[0]);
-            cache = new WeakMap();
-            result = processLevel(config, levels[0]);
-            for (i = 1; i < levels.length; i++) {
-                // prepareLevelProcess(levels[i]);
-                cache = new WeakMap();
-                result = processLevel(result, levels[i]);
+        if (Array.isArray(levels)) {
+            for (i = 0; i < levels.length; i++) {
+                res = processLevel(res, levels[i]);
             }
         }
-        return result;
 
-        /** Processes an individual level. */
-        function processLevel(config, level) {
-            if (isObj(config) && isObj(level)) {
-                return objectExtend(config, level);
-            } else if (Array.isArray(config) && Array.isArray(level)) {
-                return arrayExtend(config, level);
-            } else if (isObj(level)) {
-                return processLevel({}, level);
-            } else if (Array.isArray(level)) {
-                let res = level.map(e => processLevel({}, e));
-                Object.defineProperty(res, parser.PROPERTY_SYMBOL_CONTEXT, {
-                    enumerable: false,
-                    value: cman,
-                    writable: !options.readOnly,
-                    configurable: !options.protectStructure
-                });
+        return res;
+
+        function processLevel(base, extend) {
+            var cman;
+            // We wrap here to have a single instance of context manager.
+            return processValues(base, extend, doubleCache());
+
+            function processValues(base, extend, cache) {
+                var i, res;
+                if (!base || !extend || typeof base !== 'object' || typeof extend !== 'object') {
+                    return extend;
+                }
+                if (cache.has(base, extend)) {
+                    return cache.get(base, extend);
+                }
+                // Note: Cache set takes place in createConfigObject
+                if (Array.isArray(base) && Array.isArray(extend)) {
+                    return arrayExtend(base, extend, cache);
+                } else if (isObj(base) && isObj(extend)) {
+                    return objectExtend(base, extend, cache);
+                } else if (Array.isArray(extend)) {
+                    res = createConfigObject([], base, extend, cache);
+                    for (i = 0; i < extend.length; i++) {
+                        res.push(processValues({}, extend[i], cache));
+                    }
+                    return res;
+                } else if (isObj(extend)) {
+                    return processValues({}, extend, cache);
+                } else {
+                    return processValues({}, extend, cache);
+                }
+            }
+
+            function objectExtend(base, extend, cache) {
+                var res = createConfigObject({}, base, extend, cache);
+                Object.keys(base).forEach(processKey);
+                Object.keys(extend).forEach(processKey);
                 return res;
-            } else {
-                return level;
-            }
 
-            /**
-             * Checks whether the supplied value is an object that is not
-             *  an array, date or regex.
-             */
-            function isObj(obj) {
-                return common.typeOf(obj) === 'object';
-            }
-        }
-
-        function processContext(base, extend, result) {
-            var ectx, rctx, id;
-            ectx = extend[parser.PROPERTY_SYMBOL_CONTEXT];
-            if (ectx) {
-                rctx = cman.sub(ectx.name(), ectx.environment(), ectx.locals());
-            } else {
-                rctx = cman.sub();
-            }
-
-            Object.defineProperty(result, parser.PROPERTY_SYMBOL_CONTEXT, {
-                enumerable: false,
-                value: rctx,
-                writable: !options.readOnly,
-                configurable: !options.protectStructure
-            });
-
-            // Ensure environment is updated
-            rctx.update(base, result);
-            rctx.update(extend, result);
-
-            // Register if we have an id
-            if (extend[parser.PROPERTY_SYMBOL_ID]) {
-                id = extend[parser.PROPERTY_SYMBOL_ID];
-            } else if (base[parser.PROPERTY_SYMBOL_ID]) {
-                id = base[parser.PROPERTY_SYMBOL_ID];
-            }
-            if (id) {
-                rctx.register(id, result);
-                Object.defineProperty(result, parser.PROPERTY_SYMBOL_ID, {
-                    enumerable: false,
-                    value: id,
-                    writable: !options.readOnly,
-                    configurable: !options.protectStructure
-                });
-            }
-        }
-
-        function objectExtend(base, extend) {
-            var result, cachedResult, keys;
-
-            cachedResult = cacheGet(base, extend);
-            if (cachedResult) {
-                return cachedResult;
-            }
-
-            // Create the result with the base as a prototype
-            result = Object.create({});
-            processContext(base, extend, result);
-            cacheSet(base, extend, result);
-
-            // Now we are ready to process the keys.
-            keys = allKeys(base, extend);
-            keys.forEach(processKey);
-            Object.setPrototypeOf(result, base);
-
-            if (result[parser.PROPERTY_SYMBOL_ID] && !result.hasOwnProperty(parser.PROPERTY_ID)) {
-                result[parser.PROPERTY_ID] = result[parser.PROPERTY_SYMBOL_ID];
-            }
-
-            return result;
-
-            function cacheGet(base, extend) {
-                var cachedResult, extendCachedResult;
-                cachedResult = cache.get(base);
-                if (cachedResult) {
-                    extendCachedResult = cachedResult.get(extend);
-                    if (extendCachedResult) {
-                        return extendCachedResult;
-                    }
-                }
-            }
-
-            function cacheSet(base, extend, value) {
-                var cachedResult;
-                cachedResult = cache.get(base);
-                if (!cachedResult) {
-                    cachedResult = new WeakMap();
-                    cache.set(base, cachedResult);
-                }
-                cachedResult.set(extend, value);
-            }
-
-            /** Processes an individual key */
-            function processKey(k) {
-                var bt, et, def;
-
-                def = Object.getOwnPropertyDescriptor(extend, k);
-
-                // If we have an accessor, we just copy it onto the result, unless it
-                //  is an object which we then recursively process and define as a normal
-                //  value property
-                // TODO: This is not working well.....
-                if (def && def.get && def.get[module.exports.PROPERTY_SYMBOL_CUSTOM]) {
-                    if (extend[k] && typeof extend[k] === 'object') {
-                        def.value = processLevel(base[k], extend[k]);
-                        delete def.get;
-                        delete def.set;
-                    }
-                    Object.defineProperty(result, k, def);
-                    return;
-                } else if (def && def.get) {
-                    Object.defineProperty(result, k, def);
-                    return;
-                }
-
-                def = undefined;
-                bt = common.typeOf(base[k]);
-                et = common.typeOf(extend[k]);
-                if (!extend.hasOwnProperty(k)) {
-                    def = Object.getOwnPropertyDescriptor(base, k);
-                    if (def && !def.hasOwnProperty('value')) {
-                        if (base[k] && typeof base[k] === 'object') {
-                            def.value = processExtendObject(base[k]);
-                            delete def.get;
-                            delete def.set;
-                        }
-                        Object.defineProperty(result, k, def);
+                function processKey(k) {
+                    if (res.hasOwnProperty(k)) {
+                        // Already processed
                         return;
                     }
-                }
-
-                // All following is to process non-accessors
-                // If we have an object, or array we want to make sure we pass locals and
-                //  environment along.
-                if (bt !== et && et === 'object') {
-                    setResultValue(result, k, processExtendObject(extend[k]));
-                } else if (bt !== et && et === 'array') {
-                    result[k] = extend[k].map(processExtendObject);
-                } else if (extend.hasOwnProperty(k) && et === 'undefined') {
-                    // Hide the prop
-                    Object.defineProperty(result, k, {
-                        enumerable: false,
-                        configurable: true,
-                        get: function () {
-                            return undefined;
-                        },
-                        set: function (value) {
-                            // We need to redifine as an enumerable...
-                            Object.defineProperty(result, k, {
-                                enumerable: true,
-                                configurable: true,
-                                value: value
-                            });
-                        }
-                    });
-                } else if (et === 'undefined') {
-                    setResultValue(result, k, processExtendObject(base[k]));
-                } else {
-                    setResultValue(result, k, processLevel(base[k], extend[k]));
-                }
-
-                function processExtendObject(extend) {
-                    return processLevel({}, extend);
-                }
-
-                function setResultValue(result, name, value) {
-                    Object.defineProperty(result, name, {
-                        enumerable: true,
-                        value: value,
-                        writable: !options.readOnly,
-                        configurable: !options.protectStructure
-                    });
-                }
-            }
-        }
-
-        function arrayExtend(base, extend) {
-            var commands, res, i;
-            if (typeof module.exports.COMMAND_CHECK === 'function') {
-                commands = module.exports.COMMAND_CHECK(extend);
-                if (commands) {
-                    res = base.slice();
-                    processContext(base, extend, res);
-                    return applyCommands(res, commands);
-                }
-            }
-            res = [];
-            processContext(base, extend, res);
-            for (i = 0; i < extend.length; i++) {
-                res.push(processLevel({}, extend[i]));
-            }
-            return res;
-        }
-
-        /** Applies the commands to the base array. */
-        function applyCommands(base, commands) {
-            // We need to operate on a copy of base.
-            for (let i = 0; i < base.length; i++) {
-                base[i] = processLevel({}, base[i]);
-            }
-            commands.forEach(applyCommand);
-            return base;
-
-            /** Executes the command on the base */
-            function applyCommand(command) {
-                var index;
-                switch (command.action) {
-                    case 'add':
-                        base.push(command.value);
-                        break;
-                    case 'insert':
-                        if (command.find) {
-                            index = find(command.find);
-                            if (index > -1) {
-                                if (command.after) {
-                                    base.splice(index + 1, 0, command.value);
-                                } else {
-                                    base.splice(index, 0, command.value);
-                                }
-                            }
+                    if (extend.hasOwnProperty(k)) {
+                        if (extend[k] === undefined) {
+                            // Note: This means we need to remove a property. When we created
+                            //  the config object, we added added an additional prototype layer
+                            //  to manage this situation. (So we have base -> additional -> obj)
+                            // By setting this here, the name does not appear in the keys,
+                            //  and any attempt to access the value returns undefined.
+                            Object.getPrototypeOf(res)[k] = undefined;
+                            return;
+                        } else if (parser.expression(extend, k)) {
+                            copyExpression(extend, res, k);
                         } else {
-                            console.warn('No find parameters specified');
+                            res[k] = processValues(base[k], extend[k], cache);
                         }
-                        break;
-                    case 'remove':
-                        if (command.find) {
-                            index = find(command.find);
-                            if (index > -1) {
-                                base.splice(index, 1);
-                            }
+                    } else { // base has the property
+                        if (parser.expression(base, k)) {
+                            copyExpression(base, res, k);
                         } else {
-                            console.warn('No find parameters specified');
+                            res[k] = processValues({}, base[k], cache);
                         }
-                        break;
-                    case 'clear':
-                        base.length = 0;
-                        break;
-                    case 'update':
-                        if (command.find) {
-                            index = find(command.find);
-                            if (index > -1) {
-                                base[index] = command.value;
-                            }
-                        } else {
-                            console.warn('No find parameters specified');
-                        }
-                        break;
-                    case 'extend':
-                        if (command.find) {
-                            index = find(command.find);
-                            if (index > -1) {
-                                base[index] = processLevel(base[index], command.value);
-                            }
-                        } else {
-                            console.warn('No find parameters specified');
-                        }
-                        break;
-                    default:
-                        console.warn('Unrecognized configuration array action "' +
-                            command.action + '"');
-                        break;
-                }
-            }
-
-            /**
-             * Searches through the base for a value matching the supplied paramers
-             *  and returns it's index.
-             */
-            function find(params) {
-                for (var i = 0; i < base.length; i++) {
-                    if (base[i] === params) {
-                        return i;
                     }
-                    if (common.isObject(params) && common.isObject(base[i])) {
-                        if (Object.keys(params).every(matches.bind(null, base[i]))) {
+                }
+            }
+
+            function arrayExtend(base, extend, cache) {
+                var commands, items, res, i;
+                // TODO: When the config object is created readOnly,
+                //  We have an issue applying commands!
+                // TODO: What is we create the config object afterwards?
+                res = createConfigObject([], base, extend, cache);
+                if (typeof module.exports.COMMAND_CHECK === 'function') {
+                    commands = module.exports.COMMAND_CHECK(extend);
+                    if (commands) {
+                        // Note: We need to apply to a vanilla array in case
+                        //  we are in read only mode which will prevent certain
+                        //  types of splice re-arrangement from happening.
+                        items = base.slice();
+                        items = applyCommands(items, commands, cache);
+                        for (i = 0; i < items.length; i++) {
+                            res.push(processValues({}, items[i], cache));
+                        }
+                        return res;
+                    }
+                }
+                for (i = 0; i < extend.length; i++) {
+                    res.push(processValues({}, extend[i], cache));
+                }
+                return res;
+            }
+
+            /** Applies the commands to the base array. */
+            function applyCommands(base, commands, cache) {
+                // We need to operate on a copy of base.
+                for (let i = 0; i < base.length; i++) {
+                    base[i] = processValues({}, base[i], cache);
+                }
+                commands.forEach(applyCommand);
+                return base;
+
+                /** Executes the command on the base */
+                function applyCommand(command) {
+                    var index;
+                    switch (command.action) {
+                        case 'add':
+                            base.push(command.value);
+                            break;
+                        case 'insert':
+                            if (command.find) {
+                                index = find(command.find);
+                                if (index > -1) {
+                                    if (command.after) {
+                                        base.splice(index + 1, 0, command.value);
+                                    } else {
+                                        base.splice(index, 0, command.value);
+                                    }
+                                }
+                            } else {
+                                console.warn('No find parameters specified');
+                            }
+                            break;
+                        case 'remove':
+                            if (command.find) {
+                                index = find(command.find);
+                                if (index > -1) {
+                                    base.splice(index, 1);
+                                }
+                            } else {
+                                console.warn('No find parameters specified');
+                            }
+                            break;
+                        case 'clear':
+                            base.length = 0;
+                            break;
+                        case 'update':
+                            if (command.find) {
+                                index = find(command.find);
+                                if (index > -1) {
+                                    base[index] = command.value;
+                                }
+                            } else {
+                                console.warn('No find parameters specified');
+                            }
+                            break;
+                        case 'extend':
+                            if (command.find) {
+                                index = find(command.find);
+                                if (index > -1) {
+                                    base[index] = processLevel(base[index], command.value);
+                                }
+                            } else {
+                                console.warn('No find parameters specified');
+                            }
+                            break;
+                        default:
+                            console.warn('Unrecognized configuration array action "' +
+                                command.action + '"');
+                            break;
+                    }
+                }
+
+                /**
+                 * Searches through the base for a value matching the supplied paramers
+                 *  and returns it's index.
+                 */
+                function find(params) {
+                    for (var i = 0; i < base.length; i++) {
+                        if (base[i] === params) {
                             return i;
                         }
+                        if (isObject(params) && isObject(base[i])) {
+                            if (Object.keys(params).every(matches.bind(null, base[i]))) {
+                                return i;
+                            }
+                        }
+                    }
+                    return -1;
+
+                    /** Returns true if the value matches the parameter. */
+                    function matches(val, param) {
+                        return val[param] === params[param];
                     }
                 }
-                return -1;
+            }
 
-                /** Returns true if the value matches the parameter. */
-                function matches(val, param) {
-                    return val[param] === params[param];
+            function copyExpression(src, dest, name) {
+                let desc = Object.getOwnPropertyDescriptor(src, name);
+                if (desc) {
+                    desc.configurable = !options.protectStructure;
+                    Object.defineProperty(dest, name, desc);
                 }
             }
-        }
-    }
 
-    function allKeys(obj1, obj2) {
-        var keys = Object.keys(obj1).concat(Object.keys(obj2));
-        return keys.filter((k, i) => keys.indexOf(k) === i);
+            function createConfigObject(type, base, extend, cache, opts) {
+                var env, bcman, ecman, res;
+                //  We need an environment that is a combination of extend
+                //      overriding base...
+                bcman = configObject.context(base);
+                ecman = configObject.context(extend);
+                env = Object.assign(
+                    bcman && bcman.environment() || {},
+                    ecman && ecman.environment() || {},
+                    options.environment || {}
+                );
+                opts = Object.assign({
+                    readOnly: options.readOnly,
+                    protectStructure: options.protectStructure,
+                    environment: env,
+                    context: options.context,
+                    contextManager: cman
+                }, opts);
+                res = configObject(type, opts);
+
+                // Set the prototype to base so extended expressions can
+                //  use the base keyword.
+                if (base && typeof base === 'object') {
+                    // Note: We add an additional prototype layer that we can use to hide
+                    //  underlying propery values.
+                    Object.setPrototypeOf(res, Object.create(base));
+                }
+                cman = configObject.context(res);
+                cache.set(base, extend, res);
+
+
+                return res;
+            }
+
+            function isObj(obj) {
+                return obj && typeof obj === 'object' && !Array.isArray(obj);
+            }
+        }
     }
 
     /**
@@ -383,12 +295,17 @@
         /** Checks whether the supplied element is a command element */
         function isCommandElement(ele) {
             var keys;
-            if (common.isObject(ele)) {
+            if (isObject(ele)) {
                 keys = Object.keys(ele);
                 return keys.length === 1 && module.exports.PROPERTY_COMMAND_NAME;
             } else {
                 return false;
             }
         }
+    }
+
+    /** Simple non-null object check */
+    function isObject(val) {
+        return !!val && typeof val === 'object';
     }
 })(module);

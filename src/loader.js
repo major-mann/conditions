@@ -16,9 +16,7 @@
     };
 
     // Dependencies
-    const parser = require('./parser'),
-        // TODO: Replace with common once extend function is written
-        common = require('./common.js');
+    const parser = require('./parser');
 
     /**
      * Parses the supplied config string, with additional custom handling of import statements.
@@ -46,9 +44,9 @@
                 throw new Error('loader MUST be a function');
             }
             if (options && typeof options === 'object') {
-                options = common.extend({}, OPTIONS_DEFAULT, options);
+                options = Object.assign({}, OPTIONS_DEFAULT, options);
             } else {
-                options = common.extend({}, OPTIONS_DEFAULT);
+                options = Object.assign({}, OPTIONS_DEFAULT);
             }
             options.custom = handleCustomExpression;
 

@@ -40,16 +40,6 @@ describe('configuration parser', function () {
             var val = parse(data('array'));
             expect(val).to.be.an('array');
         });
-        it('should not create the context value symbol when is is not defined on the parse function', function () {
-            var val = parse(data('object'));
-
-            expect(Object.getOwnPropertySymbols(val).length).to.equal(1);
-
-            parse.PROPERTY_SYMBOL_CONTEXT = undefined;
-
-            val = parse(data('object'));
-            expect(Object.getOwnPropertySymbols(val).length).to.equal(0);
-        });
     });
 
     describe('literals', function () {
@@ -135,10 +125,6 @@ describe('configuration parser', function () {
         });
         it('should use values from options.environment to the parse function in expressions', function () {
             expect(val.exp8).to.equal('foo bar baz');
-        });
-        it('should return the property with the same name from the prototype when "base" is specified', function () {
-            Object.getPrototypeOf(val).baseTest = 1234;
-            expect(val.baseTest).to.equal(1234);
         });
         it('should not allow new expressions', function () {
             expect(parse.bind(null, '{ foo: new Date() }')).to.throw(/not.*supported/i);

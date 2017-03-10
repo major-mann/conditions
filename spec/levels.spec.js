@@ -244,6 +244,7 @@ describe('levels', function () {
                 expect(result.vals).to.be.an('array');
                 expect(result.vals.length).to.equal(0);
             });
+
             it('should allow elements to be extended', function () {
                 var config, ext, result;
                 config = {
@@ -270,7 +271,6 @@ describe('levels', function () {
                     lvl2 = parse(data('extend.development')),
                     config;
                 config = extend(lvl1, [lvl2]);
-
                 expect(config.server.domain).to.equal('dev-example.com');
                 expect(config.server.url).to.equal('https://dev-example.com');
                 config.server.port = 8080;
@@ -281,7 +281,7 @@ describe('levels', function () {
 
     describe('options', function () {
         it('should make all properties read only when "readOnly" is truthy', function () {
-            var config, ext, result, def;
+            var config, ext, result;
             config = {
                 vals: [{ id: 1 },{ id: 2 },{ id: 3 },{ id: 4 },{ id: 5 }]
             };
@@ -292,11 +292,9 @@ describe('levels', function () {
             };
             result = extend(config, [ext], { readOnly: true });
 
-            def = Object.getOwnPropertyDescriptor(result, 'vals');
-            expect(def.writable).to.equal(false);
-
-            def = Object.getOwnPropertyDescriptor(result.vals[0], 'id');
-            expect(def.writable).to.equal(false);
+            expect(result.vals[0].id).to.equal(1);
+            result.vals[0].id = 100;
+            expect(result.vals[0].id).to.equal(1); // Shouldn't this throw a TypeError?
         });
         it('should make all properties read only when "protectStructure" is truthy', function () {
             var config, ext, result, def;

@@ -7,32 +7,50 @@
 
     // Public API
     module.exports = parse;
+    module.exports.context = context;
+    module.exports.expression = expression;
 
     // Dependencies
-    const contextManager = require('./context-manager.js');
+    const configObject = require('./config-object.js'),
+        contextManager = require('./context-manager.js');
+
+    // Internal constants
+    const CONSTANT_INVALID = ['Identifier', 'ThisExpression'],
+        CONSTANT_CHAIN = ['Identifier', 'MemberExpression'],
+        EXPRESSION = Symbol('expression'),
+        CUSTOM = Symbol('custom'),
+        DEPENDENCIES = Symbol('dependencies'),
+        OVERRIDE = Symbol('override');
 
     // Constants
     module.exports.PROPERTY_ID = 'id'; // This identifies the name of the id property when parsing.
-    module.exports.PROPERTY_SYMBOL_ID = Symbol('id');
-    module.exports.PROPERTY_SYMBOL_CUSTOM = Symbol('custom');
-    module.exports.PROPERTY_SYMBOL_CONTEXT = Symbol('context');
-    // module.exports.PROPERTY_SYMBOL_ENVIRONMENT = Symbol('environment');
-    // module.exports.PROPERTY_SYMBOL_LOCALS = Symbol('locals');
-    module.exports.PROPERTY_BASE_NAME = 'base';
+    module.exports.CUSTOM = CUSTOM;
+    module.exports.DEPENDENCIES = DEPENDENCIES;
+    module.exports.BASE_NAME = 'base';
+
+    // These are globals identifiers which will left as is in the code instead of being replaced
+    //  by a context call.
     module.exports.VALID_GLOBALS = ['Infinity', 'NaN', 'undefined', 'Object', 'Number', 'String',
         'RegExp', 'Boolean', 'Array', 'Error', 'EvalError', 'InternalError', 'RangeError',
         'ReferenceError', 'SyntaxError', 'TypeError', 'URIError', 'Math', 'Date', 'isFinite',
         'isNaN', 'parseFloat', 'parseInt', 'decodeURI', 'decodeURIComponent', 'encodeURI',
         'encodeURIComponent', 'escape', 'unescape'];
+    // These are globals which may not be used.
     module.exports.ILLEGAL_GLOBALS = ['eval', 'Function'];
-
-    const CONSTANT_INVALID = ['Identifier', 'ThisExpression'];
 
     // Dependencies
     const esprima = require('esprima'),
-        escodegen = require('escodegen'),
-        // TODO: Replace with common extend once it is written
-        common = require('./common.js');
+        escodegen = require('escodegen');
+
+    /** Checks whether the named property is an expression ort not */
+    function expression(obj, name) {
+        if (obj && typeof obj === 'object') {
+            let desc = Object.getOwnPropertyDescriptor(obj, name);
+            return desc && desc.get && desc.get[EXPRESSION];
+        } else {
+            return false;
+        }
+    }
 
     /**
     * Parses the supplied data, attempting to build up a config object.
@@ -52,7 +70,7 @@
     * @throws {error} When str is not a string.
     */
     function parse(str, options) {
-        var code, config, cman, placeholder;
+        var code, config, cman;
 
         // Ensure the data is valid
         if (typeof str !== 'string') {
@@ -65,7 +83,7 @@
         }
 
         // Ensure options is an object, and we don't make changes to the supplied data.
-        options = common.extend({}, options);
+        options = Object.assign({}, options);
 
         // Make sure environment is an object
         if (!isObject(options.environment)) {
@@ -93,14 +111,6 @@
         // Extract the root node.
         code = code.body[0].expression;
 
-        // Create the context manager
-        if (options.contextManager && typeof options.contextManager.sub === 'function') {
-            cman = options.contextManager.sub(options.context, options.environment);
-        } else {
-            placeholder = {};
-            cman = contextManager(placeholder, options.context, options.environment);
-        }
-
         // Check the root type, and make sure we have an object
         //   or an array.
         var result;
@@ -123,7 +133,6 @@
                     `Got "${code.type}".`;
                 throw new Error(errorMessage(msg, code));
         }
-        cman.update(placeholder, result);
         return result;
 
         /** Returns the value represented by the supplied literal block */
@@ -135,15 +144,318 @@
             }
         }
 
+        function createConfigObject(base) {
+            var result = configObject(base, {
+                contextManager: cman,
+                readOnly: options.readOnly,
+                protectStructure: options.protectStructure,
+                environment: options.environment
+            });
+            // Set it for all future objects being loaded if it was undefined
+            //  (otherwise the original value will be returned)
+            cman = configObject.context(result);
+            return result;
+        }
+
+        /**
+        * Parses an array expression, and returns an array.
+        * @param {object} block The ArrayExpression to parse.
+        * @returns {array} The Array representing the supplied block.
+        */
+        function parseArray(block) {
+            var arr = createConfigObject([]);
+            if (!config) {
+                config = arr;
+            }
+            block.elements.forEach(mapVal);
+
+            // We do this so we can handle expressions in arrays
+            if (arr.some(e => typeof e === 'function')) {
+                arr = new Proxy(arr, {
+                    get
+                });
+            }
+
+            return arr;
+
+            /** Calls parseblock with the array as the second arg */
+            function mapVal(block) {
+                var parsed = parseBlock(arr, block);
+                arr.push(parsed);
+            }
+
+            function get(target, prop) {
+                prop = parseInt(prop, 10);
+                if (!isNaN(prop) && target[prop] && target[prop][EXPRESSION]) {
+                    // Only execute expressions
+                    return target[prop].apply(target);
+                } else {
+                    return target[prop];
+                }
+            }
+        }
+
+        /**
+        * Parses the supplied block
+        * @param {object} block The block representing the object
+        */
+        function parseObject(block) {
+            var idprop, result, props;
+
+            // Create the config object
+            result = createConfigObject({});
+
+            // Set the base to the root object
+            if (!config) {
+                config = result;
+            }
+
+            // Parse all the properties
+            props = block.properties
+                // This applies the filtered properties to the prototype.
+                .filter(processId);
+            props = props.map(parseProperty);
+
+            if (result[contextManager.ID]) {
+                cman.register(result[contextManager.ID], result);
+            }
+
+            // Assign the properties to the object
+            props.forEach(assignProp);
+
+            // We add the named id after everything else, and only if a property named id does not
+            //  exist.
+            if (!Object.hasOwnProperty.call(result, module.exports.PROPERTY_ID) && idprop) {
+                Object.defineProperty(result, module.exports.PROPERTY_ID, {
+                    enumerable: true,
+                    value: idprop,
+                    writable: !options.readOnly,
+                    configurable: !options.protectStructure
+                });
+            }
+            return result;
+
+            /**
+             * Checks if this is an identifier id prop. If it is, adds it to locals, then the id
+             *  as a string to the prototype. Finally returns false for the id property so it is
+             *  not processed in the standard manner.
+             */
+            function processId(prop) {
+                var name;
+                if (prop.type === 'Property') {
+                    name = propName(prop.key);
+                    if (name === module.exports.PROPERTY_ID && prop.value.type === 'Identifier') {
+                        Object.defineProperty(result, contextManager.ID, {
+                            enumerable: false,
+                            value: prop.value.name,
+                            writable: !options.readOnly,
+                            configurable: !options.protectStructure
+                        });
+                        idprop = prop.value.name;
+                        return false;
+                    } else {
+                        return true;
+                    }
+                } else {
+                    let msg = `unsupported property type "${prop.type}"`;
+                    throw new Error(errorMessage(msg, prop));
+                }
+            }
+
+            /**
+            * Parses a "Property" block, returning an object containing a name and value for it
+            * @prop {object} The property block to parse.
+            */
+            function parseProperty(prop) {
+                var name, value;
+                name = propName(prop.key);
+                value = parseBlock(result, prop.value);
+
+                return {
+                    name: name,
+                    value: value
+                };
+            }
+
+            /**
+            * Returns a literal value, or identifier name depending on the block type supplied.
+            */
+            function propName(block) {
+                switch (block.type) {
+                    case 'Literal':
+                        return block.value;
+                    case 'Identifier':
+                        return block.name;
+                    default:
+                        let msg = `unable to determine a property name from a ` +
+                            `"${block.type}" block`;
+                        msg = errorMessage(msg, block);
+                        throw new Error(msg);
+                }
+            }
+
+            /**
+            * Assigns the property to the result
+            * @param {object} prop The property object as returned from parseProperty.
+            */
+            function assignProp(prop) {
+                var definition, name, val;
+                // Create the base definition
+                definition = {
+                    configurable: !options.protectStructure,
+                    enumerable: true
+                };
+
+                // Do this so we can release prop in closures.
+                name = prop.name;
+                val = prop.value;
+
+                if (typeof val === 'function') {
+                    definition = {
+                        enumerable: true,
+                        configurable: !options.protectStructure,
+                        get,
+                        set
+                    };
+                    if (prop.value[EXPRESSION]) {
+                        definition.get[EXPRESSION] = true;
+                    }
+                    if (prop.value[CUSTOM]) {
+                        definition.get[CUSTOM] = true;
+                    }
+                    if (val[configObject.DEPENDENCIES]) {
+                        // TODO: How to use these? We need to tie up to the change events somehow...
+                        definition.get[configObject.DEPENDENCIES] = val[configObject.DEPENDENCIES];
+                    }
+                    // TODO: Need a copyable set... and it would be useful if the get carried
+                    //  it across on copy... Could we assign the set value to the get function?
+                    // Define the property on the result
+                    Object.defineProperty(result, name, definition);
+                } else {
+                    // We can just assign. config-object will take care of processing.
+                    result[name] = val;
+                }
+
+                /** The local context call */
+                function context(contextName, nothrow) {
+                    return parse.context.call(this, name, contextName, nothrow);
+                }
+
+                function get() {
+                    if (get.hasOwnProperty(OVERRIDE)) {
+                        return get[OVERRIDE];
+                    } else {
+                        return val.call(this, context);
+                    }
+                }
+
+                function set(value) {
+                    // Note: Read only is taken care of by the config object
+                    get[OVERRIDE] = value;
+                }
+            }
+        }
+
+        /**
+        * Wraps the block expression with a return, and in turn wraps
+        *   that in a function, and then generates the appropriate code,
+        *   and returns a function which executes the expression with the
+        *   given context.
+        */
+        function parseExpression(result, oblock) {
+            var body, func, res, haveCustom, refs, block = oblock;
+
+            // Get the possible custom expression function.
+            func = customProcess(block, cman);
+
+            if (typeof func === 'function') {
+                haveCustom = true;
+            } else {
+                // Ensure we are not doing something invalid.
+                validateBlock(block);
+            }
+
+            if (!haveCustom && isConstantExpression(block)) {
+                return constantExpression(block);
+            } else if (!haveCustom) {
+                if (block.type === 'TemplateLiteral') {
+                    block = parseTemplateLiteral(block);
+                    // If we have a literal value we just return it.
+                    if (block.type === 'Literal') {
+                        return block.value;
+                    }
+                }
+
+                // Process the identifiers
+                // TODO: Not working anymore? Still got base...??
+                block = processIdentifiers(block);
+                refs = block.refs;
+
+                // Wrap the expression with a return statement
+                block = {
+                    type: 'ReturnStatement',
+                    argument: block
+                };
+
+                // Generate the code
+                body = escodegen.generate(block);
+
+                // Create the getter function
+                func = new Function(['context'], body); // jshint ignore:line
+            }
+
+            // Build a function which will give us line and column information.
+            res = function (context) {
+                var val, e;
+                try {
+                    val = func.call(this, context);
+                } catch (err) {
+                    e = prepareError(err, oblock);
+                    throw e;
+                }
+                return val;
+            };
+
+            res[EXPRESSION] = true;
+            if (haveCustom) {
+                res[CUSTOM] = true;
+            }
+            if (Array.isArray(refs)) {
+                res[configObject.DEPENDENCIES] = refs;
+            }
+
+            return res;
+
+            /** Ensures blocks are valid */
+            function validateBlock(obj) {
+                var keys;
+                if (obj && typeof obj === 'object') {
+                    if (obj.type) {
+                        if (!blockSupported(obj)) {
+                            let msg = `"${obj.type}" block is illegal in expressions.`;
+                            throw new Error(errorMessage(msg, obj));
+                        }
+                    }
+                    keys = Object.keys(obj)
+                        .forEach(val);
+                }
+
+                /** returns the named value from the object */
+                function val(name) {
+                    validateBlock(obj[name]);
+                }
+            }
+        }
+
         /**
          * Returns a function which can be used as a getter to get the value of the template
          *   literal.
          */
         function parseTemplateLiteral(block) {
-            var parts, oblock, body, func, res, i;
+            var parts, oblock, i;
             if (block.expressions.length) {
-                // Process the identifiers
-                block = processIdentifiers(block);
+                // TODO: We need a way to monitor potential changes to identifiers and trigger
+                //  change events on the monitor.
 
                 parts = [];
                 for (i = 0; i < block.quasis.length; i++) {
@@ -176,340 +488,19 @@
                     };
                 }
 
-                // Wrap the expression with a return statement
-                block = {
-                    type: 'ReturnStatement',
-                    argument: block
-                };
-
-                // Generate the code
-                body = escodegen.generate(block);
-
-                // Create the getter function
-                func = new Function(['context'], body); // jshint ignore:line
-
-                // Build a function which will give us line and column information.
-                res = function (context) {
-                    var val, e;
-                    try {
-                        val = func.call(this, context);
-                    } catch (err) {
-                        e = prepareError(err, oblock);
-                        throw e;
-                    }
-                    return val;
-                };
-
-                return res;
+                return block;
             } else {
-                return block.quasis[0].value.cooked;
-            }
-
-        }
-
-        /**
-        * Parses an array expression, and returns an array.
-        * @param {object} block The ArrayExpression to parse.
-        * @returns {array} The Array representing the supplied block.
-        */
-        function parseArray(block) {
-            var arr = [];
-            if (!config) {
-                config = arr;
-            }
-
-            // We always want a context manager on the root.
-            if (module.exports.PROPERTY_SYMBOL_CONTEXT) {
-                Object.defineProperty(arr, module.exports.PROPERTY_SYMBOL_CONTEXT, {
-                    enumerable: false,
-                    value: cman,
-                    writable: !options.readOnly,
-                    configurable: !options.protectStructure
-                });
-            }
-            block.elements.forEach(mapVal);
-
-            // We do this so we can handle expressions in arrays
-            if (arr.some(e => typeof e === 'function')) {
-                arr = new Proxy(arr, {
-                    get
-                });
-            }
-
-            return arr;
-
-            /** Calls parseblock with the array as the second arg */
-            function mapVal(block) {
-                var parsed = parseBlock(block);
-                arr.push(parsed);
-            }
-
-            function get(target, prop) {
-                prop = parseInt(prop, 10);
-                if (Number.isInteger(prop) && typeof target[prop] === 'function') {
-                    return target[prop].apply(target);
-                } else {
-                    return target[prop];
-                }
-            }
-        }
-
-        /**
-        * Parses the supplied block
-        * @param {object} block The block representing the object
-        */
-        function parseObject(block) {
-            var idprop, result, props;
-
-            result = {};
-            if (!config) {
-                config = result;
-            }
-
-            // Parse all the properties
-            props = block.properties
-                // This applies the filtered properties to the prototype.
-                .filter(processId);
-            props = props.map(parseProperty);
-
-            if (result[module.exports.PROPERTY_SYMBOL_ID]) {
-                cman.register(result[module.exports.PROPERTY_SYMBOL_ID], result);
-            }
-
-            if (module.exports.PROPERTY_SYMBOL_CONTEXT) {
-                Object.defineProperty(result, module.exports.PROPERTY_SYMBOL_CONTEXT, {
-                    enumerable: false,
-                    value: cman,
-                    writable: !options.readOnly,
-                    configurable: !options.protectStructure
-                });
-            }
-
-            // Assign the properties to the object
-            props.forEach(assignProp);
-
-            // We add the named id after everything else, and only if a property named id does not
-            //  exist.
-            if (!Object.hasOwnProperty.call(result, module.exports.PROPERTY_ID) && idprop) {
-                Object.defineProperty(result, module.exports.PROPERTY_ID, {
-                    enumerable: true,
-                    value: idprop,
-                    writable: !options.readOnly,
-                    configurable: !options.protectStructure
-                });
-            }
-
-            return result;
-
-            /**
-             * Checks if this is an identifier id prop. If it is, adds it to locals, then the id
-             *  as a string to the prototype. Finally returns false for the id property so it is
-             *  not processed in the standard manner.
-             */
-            function processId(prop) {
-                var name;
-                if (prop.type === 'Property') {
-                    name = propName(prop.key);
-                    if (name === module.exports.PROPERTY_ID && prop.value.type === 'Identifier') {
-                        Object.defineProperty(result, module.exports.PROPERTY_SYMBOL_ID, {
-                            enumerable: false,
-                            value: prop.value.name,
-                            writable: !options.readOnly,
-                            configurable: !options.protectStructure
-                        });
-                        idprop = prop.value.name;
-                        return false;
-                    } else {
-                        return true;
-                    }
-                } else {
-                    let msg = `unsupported property type "${prop.type}"`;
-                    throw new Error(errorMessage(msg, prop));
-                }
-            }
-
-            /**
-            * Parses a "Property" block, returning an object containing a name and value for it
-            * @prop {object} The property block to parse.
-            */
-            function parseProperty(prop) {
-                var name, value;
-                name = propName(prop.key);
-                value = parseBlock(prop.value);
                 return {
-                    name: name,
-                    value: value
+                    type: 'Literal',
+                    value: block.quasis[0].value.cooked
                 };
-            }
-
-            /**
-            * Returns a literal value, or identifier name depending on the block type supplied.
-            */
-            function propName(block) {
-                switch (block.type) {
-                    case 'Literal':
-                        return block.value;
-                    case 'Identifier':
-                        return block.name;
-                    default:
-                        let msg = `unable to determine a property name from a ` +
-                            `"${block.type}" block`;
-                        msg = errorMessage(msg, block);
-                        throw new Error(msg);
-                }
-            }
-
-            /**
-            * Assigns the property to the result
-            * @param {object} prop The property object as returned from parseProperty.
-            */
-            function assignProp(prop) {
-                var definition;
-                // Create the base definition
-                definition = {
-                    configurable: !options.protectStructure,
-                    enumerable: true
-                };
-
-                // Do we have a getter, or a normal value
-                if (typeof prop.value === 'function') {
-                    definition.get = function getValue() {
-                        return prop.value.call(this, context);
-                    };
-                    if (prop.value[module.exports.PROPERTY_SYMBOL_CUSTOM]) {
-                        definition.get[module.exports.PROPERTY_SYMBOL_CUSTOM] = true;
-                    }
-                } else {
-                    definition.writable = !options.readOnly;
-                    definition.value = prop.value;
-                }
-
-                // Define the property on the result
-                Object.defineProperty(result, prop.name, definition);
-
-                /**
-                * Returns the value of the variable in the current context. Note: This function
-                *   is specifically designed to operate in such a way that binding it to a new
-                *   object will enable to to service that new object without side effects.
-                *   i.e. There are no closure values accessed in this
-                *   function.
-                * @param {string} name The variable to retrieve the value of.
-                * @param {boolean} nothrow optional argument to prevent an error if the value
-                *   is not found. This is useful with, for example, the typeof operator.
-                */
-                function context(name, nothrow) {
-                    var proto = Object.getPrototypeOf(this),
-                        context = this[module.exports.PROPERTY_SYMBOL_CONTEXT],
-                        value;
-                    // If prototype is prefered check the entire chain for the property
-                    if (options.preferPrototype && name in this) {
-                        value = this[name];
-                    } else if (this.hasOwnProperty(name)) { // Otherwise just the object
-                        value = this[name];
-                    } else if (context.hasValue(name)) {
-                        // Coming from an object in the config file with an id property,
-                        //  or a value supplied as environment
-                        value = context.value(name);
-                    } else if (name === module.exports.PROPERTY_BASE_NAME) {
-                        value = proto && proto[prop.name];
-                    } else if (name in this) { // We do this here for precedence
-                        // This allows config to be extended.
-                        value = this[name];
-                    } else if (nothrow) { // Things like typeof
-                        value = undefined;
-                    } else {
-                        let msg = `identifier named "${name}" has not been declared!`;
-                        if (context && typeof context.name === 'function') {
-                            let cname = context.name();
-                            if (cname) {
-                                msg += `. ${cname}`;
-                            }
-                        }
-                        throw new Error(msg);
-                    }
-                    return value;
-                }
             }
         }
 
         /**
-        * Wraps the block expression with a return, and in turn wraps
-        *   that in a function, and then generates the appropriate code,
-        *   and returns a function which executes the expression with the
-        *   given context.
-        */
-        function parseExpression(oblock) {
-            var body, func, res, haveCustom, block = oblock;
-
-            // Get the possible custom expression function.
-            func = customProcess(block, cman);
-
-            if (typeof func === 'function') {
-                haveCustom = true;
-            } else {
-                // Ensure we are not doing something invalid.
-                validateBlock(block);
-            }
-
-            if (!haveCustom && isConstantExpression(block)) {
-                return constantExpression(block);
-            } else if (!haveCustom) {
-                // Process normally if we did not get a function back.
-                // Process the identifiers
-                block = processIdentifiers(block);
-
-                // Wrap the expression with a return statement
-                block = {
-                    type: 'ReturnStatement',
-                    argument: block
-                };
-
-                // Generate the code
-                body = escodegen.generate(block);
-
-                // Create the getter function
-                func = new Function(['context'], body); // jshint ignore:line
-            }
-
-            // Build a function which will give us line and column information.
-            res = function (context) {
-                var val, e;
-                try {
-                    val = func.call(this, context);
-                } catch (err) {
-                    e = prepareError(err, oblock);
-                    throw e;
-                }
-                return val;
-            };
-
-            if (haveCustom) {
-                res[module.exports.PROPERTY_SYMBOL_CUSTOM] = true;
-            }
-
-            return res;
-
-            /** Ensures blocks are valid */
-            function validateBlock(obj) {
-                var keys;
-                if (obj && typeof obj === 'object') {
-                    if (obj.type) {
-                        if (!blockSupported(obj)) {
-                            let msg = `"${obj.type}" block is illegal in expressions.`;
-                            throw new Error(errorMessage(msg, obj));
-                        }
-                    }
-                    keys = Object.keys(obj)
-                        .forEach(val);
-                }
-
-                /** returns the named value from the object */
-                function val(name) {
-                    validateBlock(obj[name]);
-                }
-            }
-        }
-
+         * Checks whether the given AST represents a constant expression
+         *  which can be executed on the spot to provide a value.
+         */
         function isConstantExpression(exp) {
             if (CONSTANT_INVALID.indexOf(exp.type) > -1) {
                 return false;
@@ -528,6 +519,9 @@
             }
         }
 
+        /**
+         * Compiles and executes a constant expression
+         */
         function constantExpression(exp) {
             var func, body;
             exp = {
@@ -553,7 +547,7 @@
         * Parses the supplied block into a value.
         * @param {object} block The block to parse
         */
-        function parseBlock(block) {
+        function parseBlock(result, block) {
             const supported = blockSupported(block);
             if (supported) {
                 switch (block.type) {
@@ -564,7 +558,6 @@
                     case 'Literal':
                         return parseLiteral(block);
                     case 'TemplateLiteral':
-                        return parseTemplateLiteral(block);
                     case 'ConditionalExpression':
                     case 'BinaryExpression':
                     case 'MemberExpression':
@@ -573,7 +566,7 @@
                     case 'ThisExpression':
                     case 'Identifier':
                     case 'Property':
-                        return parseExpression(block);
+                        return parseExpression(result, block);
                     default:
                         // We should never arrive here if supported is true.
                         throw new Error('Critical error. Invalid program!');
@@ -594,6 +587,7 @@
                 case 'UnaryExpression':
                 case 'ArrayExpression':
                 case 'TemplateLiteral':
+                case 'TemplateElement':
                 case 'CallExpression':
                 case 'ThisExpression':
                 case 'Identifier':
@@ -635,6 +629,7 @@
 
                 default:
                     // TODO: Should an error be thrown here? Not very forwards compatible...
+                    //  Perhaps just log an return false?
                     let msg = `unrecognized block type "${block.type}"`;
                     throw new Error(errorMessage(msg, block));
             }
@@ -645,15 +640,25 @@
         * context with the name of the identifier.
         */
         function processIdentifiers(obj) {
-            // Note: While in most normal situations we would have to deal with adding
-            //   the variables to some collection so they can be excluded from processing
-            //   when adjusting the root identifiers. However, in this case we do not allow
-            //   variable declarations in the expression, so we cannot have any to add.
 
-            return processBlock(obj);
+            // Create an array to hold the references we want to
+            //  tie up change event watchers to.
+            var refs, res;
+
+            refs = [];
+            res = processBlock(obj);
+            res.refs = refs;
+            return res;
 
             /** Processes a block for potential identifiers. */
-            function processBlock(block) {
+            function processBlock(block, chain) {
+                // Process chain
+                if (CONSTANT_CHAIN.indexOf(block.type) > -1) {
+                    chain = chain || [];
+                } else {
+                    chain = undefined;
+                }
+
                 switch(block.type) {
                     case 'ConditionalExpression':
                         processBlock(block.test);
@@ -670,6 +675,7 @@
                         processPotentialIdentifier(block, 'right');
                         break;
                     case 'MemberExpression':
+                        chain.unshift(block.property.name);
                         processPotentialIdentifier(block, 'object');
                         break;
                     case 'ArrayExpression':
@@ -687,6 +693,8 @@
                         processPotentialIdentifier(block, 'argument');
                         break;
                     case 'Identifier':
+                        chain.unshift('block.name');
+                        refs.push(chain.join('.'));
                         block = processIdentifierBlock(block);
                         break;
                     case 'TemplateLiteral':
@@ -712,7 +720,7 @@
                     if (block[property].type === 'Identifier') {
                         processIdentifier(block, property);
                     } else {
-                        processBlock(block[property]);
+                        processBlock(block[property], chain);
                     }
                 }
 
@@ -758,6 +766,7 @@
                 /**
                  * Returns false if identifier is a valid global, true if it is not, and throws
                  *  an error if the identifier is illegal.
+                 * @returns {boolean} true if the identifier should be replaced, else false
                  */
                 function validateIdentifier(block) {
                     if (module.exports.VALID_GLOBALS.indexOf(block.name) > -1) {
@@ -804,6 +813,57 @@
                 return false;
             }
         }
+    }
+
+    /**
+    * Returns the value of the variable in the current context. Note: This function
+    *   is specifically designed to operate in such a way that binding it to a new
+    *   object will enable to to service that new object without side effects.
+    *   i.e. There are no closure values accessed in this
+    *   function.
+    * @param {string} property The name of the property this context is bound to.
+    *           This determines which property is accessed when the "base"
+    *           keyword is requested.
+    * @param {string} name The variable to retrieve the value of.
+    * @param {boolean} nothrow optional argument to prevent an error if the value
+    *   is not found. This is useful with, for example, the typeof operator.
+    */
+    function context(property, name, nothrow) {
+        var proto, context, value;
+        context = configObject.context(this);
+        // If prototype is prefered check the entire chain for the property
+        if (this.hasOwnProperty(name)) { // Otherwise just the object
+            value = this[name];
+        } else if (context.hasValue(name)) {
+            // Coming from an object in the config file with an id property,
+            //  or a value supplied as environment
+            value = context.value(name);
+        } else if (name === module.exports.BASE_NAME) {
+            proto = Object.getPrototypeOf(this);
+            while (proto && !configObject.is(proto)) {
+                proto = Object.getPrototypeOf(proto);
+            }
+            if (proto) {
+                value = proto && proto[property];
+            } else {
+                value = undefined;
+            }
+        } else if (name in this) { // We do this here for precedence
+            // This allows config to be extended.
+            value = this[name];
+        } else if (nothrow) { // Things like typeof
+            value = undefined;
+        } else {
+            let msg = `identifier named "${name}" has not been declared!`;
+            if (context && typeof context.name === 'function') {
+                let cname = context.name();
+                if (cname) {
+                    msg += `. ${cname}`;
+                }
+            }
+            throw new Error(msg);
+        }
+        return value;
     }
 
 }(module));

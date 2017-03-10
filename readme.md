@@ -39,6 +39,11 @@ components which are documented below:
     like prototype properties, and getter expressions. This also allows advanced manipulation
     of arrays.
 
+### Gotchas
+* When setting an object value onto a config object, the object will be deep cloned and replaced
+    with config objects.
+TODO: Any other strange or unusual things...
+
 # Parser
 The core component of the conditions library. It parses config files and produces objects or
 arrays through which the configuration can be accessed.
@@ -235,9 +240,9 @@ The following commands may be issues:
 
 * Get 100% coverage
 * Property change events
-* Property reset and commit functions
 * Adding travis CI and codecov.io support.
 * Switch to eslint
 * Highly complex sample config
-* Browser acceptance testing
 * Node acceptance testing
+* Loader must throw an error on duplicate ids
+* Deal with unhandles promise rejection....
