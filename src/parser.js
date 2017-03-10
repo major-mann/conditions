@@ -19,13 +19,11 @@
         CONSTANT_CHAIN = ['Identifier', 'MemberExpression'],
         EXPRESSION = Symbol('expression'),
         CUSTOM = Symbol('custom'),
-        DEPENDENCIES = Symbol('dependencies'),
         OVERRIDE = Symbol('override');
 
     // Constants
     module.exports.PROPERTY_ID = 'id'; // This identifies the name of the id property when parsing.
     module.exports.CUSTOM = CUSTOM;
-    module.exports.DEPENDENCIES = DEPENDENCIES;
     module.exports.BASE_NAME = 'base';
 
     // These are globals identifiers which will left as is in the code instead of being replaced
@@ -327,8 +325,6 @@
                         // TODO: How to use these? We need to tie up to the change events somehow...
                         definition.get[configObject.DEPENDENCIES] = val[configObject.DEPENDENCIES];
                     }
-                    // TODO: Need a copyable set... and it would be useful if the get carried
-                    //  it across on copy... Could we assign the set value to the get function?
                     // Define the property on the result
                     Object.defineProperty(result, name, definition);
                 } else {
@@ -342,16 +338,16 @@
                 }
 
                 function get() {
-                    if (get.hasOwnProperty(OVERRIDE)) {
-                        return get[OVERRIDE];
+                    if (get[OVERRIDE] && get[OVERRIDE].has(this)) {
+                        return get[OVERRIDE].get(this);
                     } else {
                         return val.call(this, context);
                     }
                 }
 
                 function set(value) {
-                    // Note: Read only is taken care of by the config object
-                    get[OVERRIDE] = value;
+                    get[OVERRIDE] = get[OVERRIDE] || new WeakMap();
+                    get[OVERRIDE].set(this, value);
                 }
             }
         }
