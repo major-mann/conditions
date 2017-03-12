@@ -7,24 +7,20 @@
 
     // Public API
     module.exports = parse;
-    module.exports.context = context;
-    module.exports.expression = expression;
 
     // Dependencies
     const configObject = require('./config-object.js'),
-        contextManager = require('./context-manager.js');
+        contextManager = require('./context-manager.js'),
+        expression = require('./expression.js');
 
     // Internal constants
     const CONSTANT_INVALID = ['Identifier', 'ThisExpression'],
         CONSTANT_CHAIN = ['Identifier', 'MemberExpression'],
-        EXPRESSION = Symbol('expression'),
-        CUSTOM = Symbol('custom'),
-        OVERRIDE = Symbol('override');
+        CUSTOM = Symbol('custom');
 
     // Constants
     module.exports.PROPERTY_ID = 'id'; // This identifies the name of the id property when parsing.
     module.exports.CUSTOM = CUSTOM;
-    module.exports.BASE_NAME = 'base';
 
     // These are globals identifiers which will left as is in the code instead of being replaced
     //  by a context call.
@@ -39,16 +35,6 @@
     // Dependencies
     const esprima = require('esprima'),
         escodegen = require('escodegen');
-
-    /** Checks whether the named property is an expression ort not */
-    function expression(obj, name) {
-        if (obj && typeof obj === 'object') {
-            let desc = Object.getOwnPropertyDescriptor(obj, name);
-            return desc && desc.get && desc.get[EXPRESSION];
-        } else {
-            return false;
-        }
-    }
 
     /**
     * Parses the supplied data, attempting to build up a config object.
@@ -177,14 +163,14 @@
             return arr;
 
             /** Calls parseblock with the array as the second arg */
-            function mapVal(block) {
-                var parsed = parseBlock(arr, block);
+            function mapVal(block, index) {
+                var parsed = parseBlock(arr, block, index);
                 arr.push(parsed);
             }
 
             function get(target, prop) {
                 prop = parseInt(prop, 10);
-                if (!isNaN(prop) && target[prop] && target[prop][EXPRESSION]) {
+                if (!isNaN(prop) && expression.is(target, prop)) {
                     // Only execute expressions
                     return target[prop].apply(target);
                 } else {
@@ -267,7 +253,7 @@
             function parseProperty(prop) {
                 var name, value;
                 name = propName(prop.key);
-                value = parseBlock(result, prop.value);
+                value = parseBlock(result, prop.value, name);
 
                 return {
                     name: name,
@@ -297,57 +283,12 @@
             * @param {object} prop The property object as returned from parseProperty.
             */
             function assignProp(prop) {
-                var definition, name, val;
-                // Create the base definition
-                definition = {
-                    configurable: !options.protectStructure,
-                    enumerable: true
-                };
-
-                // Do this so we can release prop in closures.
-                name = prop.name;
-                val = prop.value;
-
-                if (typeof val === 'function') {
-                    definition = {
-                        enumerable: true,
-                        configurable: !options.protectStructure,
-                        get,
-                        set
-                    };
-                    if (prop.value[EXPRESSION]) {
-                        definition.get[EXPRESSION] = true;
-                    }
-                    if (prop.value[CUSTOM]) {
-                        definition.get[CUSTOM] = true;
-                    }
-                    if (val[configObject.DEPENDENCIES]) {
-                        // TODO: How to use these? We need to tie up to the change events somehow...
-                        definition.get[configObject.DEPENDENCIES] = val[configObject.DEPENDENCIES];
-                    }
-                    // Define the property on the result
-                    Object.defineProperty(result, name, definition);
+                if (typeof prop.value === 'function') {
+                    // Attach the expression to the result.
+                    expression.attach(result, prop.name, prop.value, options);
                 } else {
                     // We can just assign. config-object will take care of processing.
-                    result[name] = val;
-                }
-
-                /** The local context call */
-                function context(contextName, nothrow) {
-                    return parse.context.call(this, name, contextName, nothrow);
-                }
-
-                function get() {
-                    if (get[OVERRIDE] && get[OVERRIDE].has(this)) {
-                        return get[OVERRIDE].get(this);
-                    } else {
-                        return val.call(this, context);
-                    }
-                }
-
-                function set(value) {
-                    get[OVERRIDE] = get[OVERRIDE] || new WeakMap();
-                    get[OVERRIDE].set(this, value);
+                    result[prop.name] = prop.value;
                 }
             }
         }
@@ -358,7 +299,7 @@
         *   and returns a function which executes the expression with the
         *   given context.
         */
-        function parseExpression(result, oblock) {
+        function parseExpression(result, oblock, propertyName) {
             var body, func, res, haveCustom, refs, block = oblock;
 
             // Get the possible custom expression function.
@@ -383,8 +324,7 @@
                 }
 
                 // Process the identifiers
-                // TODO: Not working anymore? Still got base...??
-                block = processIdentifiers(block);
+                block = processIdentifiers(propertyName, block);
                 refs = block.refs;
 
                 // Wrap the expression with a return statement
@@ -406,20 +346,15 @@
                 try {
                     val = func.call(this, context);
                 } catch (err) {
+                    // TODO: We seem to be getting double position information
+                    //  Check where else we are adding this information and if
+                    //  this is an offender.
                     e = prepareError(err, oblock);
                     throw e;
                 }
                 return val;
             };
-
-            res[EXPRESSION] = true;
-            if (haveCustom) {
-                res[CUSTOM] = true;
-            }
-            if (Array.isArray(refs)) {
-                res[configObject.DEPENDENCIES] = refs;
-            }
-
+            expression.prepareExpression(res, refs, haveCustom);
             return res;
 
             /** Ensures blocks are valid */
@@ -448,6 +383,8 @@
          *   literal.
          */
         function parseTemplateLiteral(block) {
+            // TODO: Do we really need this conversion...?
+            //  Why can't we just pass this off as a normal expression?
             var parts, oblock, i;
             if (block.expressions.length) {
                 // TODO: We need a way to monitor potential changes to identifiers and trigger
@@ -543,7 +480,7 @@
         * Parses the supplied block into a value.
         * @param {object} block The block to parse
         */
-        function parseBlock(result, block) {
+        function parseBlock(result, block, propertyName) {
             const supported = blockSupported(block);
             if (supported) {
                 switch (block.type) {
@@ -562,7 +499,7 @@
                     case 'ThisExpression':
                     case 'Identifier':
                     case 'Property':
-                        return parseExpression(result, block);
+                        return parseExpression(result, block, propertyName);
                     default:
                         // We should never arrive here if supported is true.
                         throw new Error('Critical error. Invalid program!');
@@ -634,8 +571,10 @@
         /**
         * Replaces identifiers that are not in the list of VALID_GLOBALS with a call to
         * context with the name of the identifier.
+        * @param {string} propertyName The name of the property the expression is for.
+        * @param {object} obj The AST block.
         */
-        function processIdentifiers(obj) {
+        function processIdentifiers(propertyName, obj) {
 
             // Create an array to hold the references we want to
             //  tie up change event watchers to.
@@ -751,6 +690,7 @@
                             },
                             arguments: [
                                 { type: 'ThisExpression' },
+                                { type: 'Literal', value: propertyName },
                                 { type: 'Literal', value: block.name },
                                 { type: 'Literal', value: !!typeOf }
                             ]
@@ -810,56 +750,4 @@
             }
         }
     }
-
-    /**
-    * Returns the value of the variable in the current context. Note: This function
-    *   is specifically designed to operate in such a way that binding it to a new
-    *   object will enable to to service that new object without side effects.
-    *   i.e. There are no closure values accessed in this
-    *   function.
-    * @param {string} property The name of the property this context is bound to.
-    *           This determines which property is accessed when the "base"
-    *           keyword is requested.
-    * @param {string} name The variable to retrieve the value of.
-    * @param {boolean} nothrow optional argument to prevent an error if the value
-    *   is not found. This is useful with, for example, the typeof operator.
-    */
-    function context(property, name, nothrow) {
-        var proto, context, value;
-        context = configObject.context(this);
-        // If prototype is prefered check the entire chain for the property
-        if (this.hasOwnProperty(name)) { // Otherwise just the object
-            value = this[name];
-        } else if (context.hasValue(name)) {
-            // Coming from an object in the config file with an id property,
-            //  or a value supplied as environment
-            value = context.value(name);
-        } else if (name === module.exports.BASE_NAME) {
-            proto = Object.getPrototypeOf(this);
-            while (proto && !configObject.is(proto)) {
-                proto = Object.getPrototypeOf(proto);
-            }
-            if (proto) {
-                value = proto && proto[property];
-            } else {
-                value = undefined;
-            }
-        } else if (name in this) { // We do this here for precedence
-            // This allows config to be extended.
-            value = this[name];
-        } else if (nothrow) { // Things like typeof
-            value = undefined;
-        } else {
-            let msg = `identifier named "${name}" has not been declared!`;
-            if (context && typeof context.name === 'function') {
-                let cname = context.name();
-                if (cname) {
-                    msg += `. ${cname}`;
-                }
-            }
-            throw new Error(msg);
-        }
-        return value;
-    }
-
 }(module));

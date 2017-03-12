@@ -240,9 +240,11 @@ The following commands may be issues:
 
 * Get 100% coverage
 * Property change events
+* Change tracking and reversion
 * Adding travis CI and codecov.io support.
 * Switch to eslint
 * Highly complex sample config
 * Node acceptance testing
 * Loader must throw an error on duplicate ids
 * Deal with unhandles promise rejection....
+* Unwrap all modules from global closure.

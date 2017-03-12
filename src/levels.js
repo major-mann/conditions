@@ -18,6 +18,7 @@
 
     // Dependencies
     const parser = require('./parser.js'),
+        expression = require('./expression.js'),
         configObject = require('./config-object.js'),
         doubleCache = require('./double-cache.js');
 
@@ -87,7 +88,9 @@
                         return;
                     }
                     if (extend.hasOwnProperty(k)) {
-                        if (extend[k] === undefined) {
+                        if (expression.is(extend, k)) {
+                            expression.copy(extend, k, res, k);
+                        } else if (extend[k] === undefined) {
                             // Note: This means we need to remove a property. When we created
                             //  the config object, we added added an additional prototype layer
                             //  to manage this situation. (So we have base -> additional -> obj)
@@ -95,14 +98,12 @@
                             //  and any attempt to access the value returns undefined.
                             Object.getPrototypeOf(res)[k] = undefined;
                             return;
-                        } else if (parser.expression(extend, k)) {
-                            copyExpression(extend, res, k);
                         } else {
                             res[k] = processValues(base[k], extend[k], cache);
                         }
                     } else { // base has the property
-                        if (parser.expression(base, k)) {
-                            copyExpression(base, res, k);
+                        if (expression.is(base, k)) {
+                            expression.copy(base, k, res, k);
                         } else {
                             res[k] = processValues({}, base[k], cache);
                         }
@@ -227,14 +228,6 @@
                     function matches(val, param) {
                         return val[param] === params[param];
                     }
-                }
-            }
-
-            function copyExpression(src, dest, name) {
-                let desc = Object.getOwnPropertyDescriptor(src, name);
-                if (desc) {
-                    desc.configurable = !options.protectStructure;
-                    Object.defineProperty(dest, name, desc);
                 }
             }
 
