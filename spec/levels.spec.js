@@ -57,14 +57,12 @@ describe('levels', function () {
                 },
                 result;
             ext.ext = ext;
-            debugger;
             result = extend(config, [ext]);
             expect(result.foo).to.equal('bar');
             expect(result.hello).to.equal('world');
         });
         it('should return a copy of arrays even when overwriting', function () {
             var res, arr = [1,2,3,4,5];
-            debugger;
             res = extend('foo', [arr]);
             expect(res).to.be.an('array');
             expect(res).not.to.equal(arr);

@@ -288,7 +288,6 @@ describe('Config object', function () {
             events.on('change', handler);
 
             expect(obj.sub2.baz).to.equal('barbaz');
-            debugger;
             obj.sub1.foo = 'baz';
             expect(obj.sub2.baz).to.equal('bazbaz');
 
@@ -410,7 +409,6 @@ describe('Config object', function () {
                 expect(old).to.equal('bar');
             });
             events.on('change', handler);
-            debugger;
             Object.defineProperty(obj.sub, 'foo', {
                 enumerable: true,
                 configurable: true,

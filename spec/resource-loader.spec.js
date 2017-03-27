@@ -119,7 +119,6 @@ describe('Resource loader', function () {
         });
         it('should use the default loader if no custom is supplied', function () {
             loaderMock.loaders = [undefined];
-            debugger;
             return rload(['http://www.example.com/config'], options)
                 .then(cfg => expect(cfg).to.be.an('object'));
         });

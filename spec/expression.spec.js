@@ -142,7 +142,6 @@ describe('Expression module', function () {
             expect(obj[0].get.call(obj)).to.equal('foo');
             obj[0].set('bar');
             expect(obj[0].get.call(obj)).to.equal('bar');
-            debugger;
             expression.clearOverride(obj, 0);
             expect(obj[0].get.call(obj)).to.equal('foo');
         });
