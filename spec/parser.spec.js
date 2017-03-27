@@ -104,6 +104,15 @@ describe('configuration parser', function () {
         });
     });
 
+    describe('sequence', function () {
+        var val = parse(data('sequence'));
+        expect(val).to.be.an('array');
+        expect(val.length).to.equal(3);
+        expect(val[0]).to.equal('foo');
+        expect(val[1]).to.equal('bar');
+        expect(val[2]).to.equal('baz');
+    });
+
     describe('expressions', function () {
         var val, env = { env: 'foo bar' };
         beforeEach(function () {
@@ -120,14 +129,35 @@ describe('configuration parser', function () {
         it('should allow configuration values on the current object to be referenced by name', function () {
             expect(val.exp6).to.equal(30);
         });
+        it('should treat literal strings inside template literals as a normal string instead of expression', function () {
+            expect(val.literal).to.equal('template-txt');
+            const desc = Object.getOwnPropertyDescriptor(val, 'literal');
+            expect(desc.value).to.equal('template-txt');
+        });
         it('should allow configuration values on the current object to be through this', function () {
             expect(val.exp7).to.equal('foo bar baz');
+        });
+        it('should allow a value to be set to override expression values', function () {
+            val = parse(data('array-expression'), { });
+            const test = Symbol('test');
+            val.hello.world[test] = 'foo bar'; // For coverage
+            expect(val.hello.world[0]).to.equal(1);
+            val.hello.world[0] = 'testing';
+            expect(val.hello.world[0]).to.equal('testing');
+
+            expect(val.hello.world[1]).to.equal(2);
+            val.hello.world[1] = 'testing';
+            expect(val.hello.world[1]).to.equal('testing');
         });
         it('should use values from options.environment to the parse function in expressions', function () {
             expect(val.exp8).to.equal('foo bar baz');
         });
         it('should not allow new expressions', function () {
             expect(parse.bind(null, '{ foo: new Date() }')).to.throw(/not.*supported/i);
+        });
+        it('should not throw an error if an undefined identier us used with typeof', function () {
+            const config = parse('{ foo: typeof dontexist }');
+            expect(config.foo).to.equal('undefined');
         });
         it('should not allow new expressions', function () {
             expect(parse.bind(null, '{ foo: new Date() }')).to.throw(/not.*supported/i);
@@ -139,6 +169,18 @@ describe('configuration parser', function () {
             expect(val.constant).to.equal(2500);
             val.constant = 100;
             expect(val.constant).to.equal(100);
+        });
+        it('should allow expressions to be used in arrays', function () {
+            val = parse(data('array-expression'), { });
+            expect(val.hello.world).to.be.an('array');
+            expect(val.hello.world.length).to.equal(3);
+            expect(val.hello.world[0]).to.equal(1);
+            expect(val.hello.world[1]).to.equal(2);
+            expect(val.hello.world[2]).to.equal(3);
+            val.foo.bar = 5;
+            expect(val.hello.world[0]).to.equal(1);
+            expect(val.hello.world[1]).to.equal(5);
+            expect(val.hello.world[2]).to.equal(3);
         });
     });
 
@@ -166,6 +208,13 @@ describe('configuration parser', function () {
         it('should report the line and column when an error occurs in an expression', function () {
             var val = parse(data('error'));
             expect(get).to.throw(/line.*column/i);
+            function get() {
+                return val.invalid;
+            }
+        });
+        it('should report the context from options if one was supplued', function () {
+            var val = parse(data('error'), { context: 'fakefile' });
+            expect(get).to.throw(/fakefile/i);
             function get() {
                 return val.invalid;
             }

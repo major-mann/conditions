@@ -1,14 +1,67 @@
 'use strict';
 
+// TODO: Add some documentation to this module.
+
 const COMMIT = Symbol('commit'),
-    RESET = Symbol('reset');
+    RESET = Symbol('reset'),
+    CHANGES = Symbol('changes');
 
 module.exports = tracker;
-module.exports.commit = obj => obj[COMMIT] && obj[COMMIT]();
-module.exports.reset = obj => obj[RESET] && obj[RESET]();
+module.exports.tracked = tracked;
+module.exports.commit = commit;
+module.exports.reset = reset;
+module.exports.changes = changes;
 
-function tracker(obj) {
-    var inserts = {}, updates = {}, deletes = {};
+function tracked(obj) {
+    if (obj && obj[CHANGES]) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+function commit(obj, cache) {
+    if (obj && obj[COMMIT]) {
+        cache = cache || new WeakMap();
+        if (cache.has(obj)) {
+            return cache.get(obj);
+        }
+        cache.set(obj, true);
+        obj[COMMIT](cache);
+        return true;
+    } else {
+        return false;
+    }
+}
+
+function reset(obj) {
+    if (obj && obj[RESET]) {
+        obj[RESET]();
+        return true;
+    } else {
+        return false;
+    }
+}
+
+function changes(obj) {
+    if (obj && obj[CHANGES]) {
+        return obj[CHANGES]();
+    } else {
+        return {
+            inserts: {},
+            updates: {},
+            deletes: {}
+        };
+    }
+}
+
+function tracker(obj, options) {
+    var inserts, updates, deletes, result;
+
+    inserts = {};
+    updates = {};
+    deletes = {};
+    options = options || {};
 
     // TODO: Reset will need a way to clear expression overrides!?
     // What about readonly sets? this will be invoked from config object...
@@ -17,34 +70,76 @@ function tracker(obj) {
 
     obj[RESET] = reset;
     obj[COMMIT] = commit;
+    obj[CHANGES] = changes;
 
-    return new Proxy(obj, {
+    result = new Proxy(obj, {
         set,
         deleteProperty,
         defineProperty
     });
+    return result;
+
+    function changes() {
+        // TODO: Should be recursive!
+        return {
+            inserts: buildInserts(),
+            updates: buildUpdates(),
+            deletes: buildDeletes()
+        };
+
+        function buildInserts() {
+            var res = {};
+            Object.keys(inserts).forEach(k => res[k] = result[k]);
+            return res;
+        }
+
+        function buildUpdates() {
+            var res = {};
+            Object.keys(updates).forEach(k => res[k] = {
+                value: result[k],
+                old: descriptorValue(updates[k])
+            });
+            return res;
+        }
+
+        function buildDeletes() {
+            const res = {};
+            Object.keys(deletes).forEach(d => res[d] = descriptorValue(deletes[d]));
+            return res;
+        }
+
+        function descriptorValue(desc) {
+            if (desc.hasOwnProperty('value')) {
+                return desc.value;
+            } else {
+                return desc.get.call(obj);
+            }
+        }
+    }
 
     function reset() {
         Object.keys(inserts).forEach(k => delete obj[k]);
         Object.keys(deletes).forEach(k => Object.defineProperty(obj, k, deletes[k]));
         Object.keys(updates).forEach(revertUpdate);
+        Object.keys(obj).forEach(k => module.exports.reset(obj[k]));
         commit();
 
         function revertUpdate(name) {
-            if (updates[name].hasOwnProperty('value')) {
-                obj[name] = updates[name].value;
-            } else {
-                // TODO: Need a way to clear expression overrides?
-                // TODO: This is messed up... we have parser which relies on config object which relies on this...
-                //  and we want to add somethins that is from parser... time to separate expression and context?
+            if (typeof options.customRevert === 'function') {
+                // TODO: Need to make sure expression reversions raise change events...
+                if (options.customRevert(result, name)) {
+                    return;
+                }
             }
+            Object.defineProperty(obj, name, updates[name]);
         }
     }
 
-    function commit() {
+    function commit(cache) {
         inserts = {};
         updates = {};
         deletes = {};
+        Object.keys(obj).forEach(k => module.exports.commit(obj[k], cache));
     }
 
     function set(obj, name, value) {
@@ -62,6 +157,7 @@ function tracker(obj) {
             trackOriginal(deletes, obj, name);
         }
         delete obj[name];
+        return true;
     }
 
     function defineProperty(obj, name, descriptor) {

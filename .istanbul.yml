@@ -1,2 +1,2 @@
 instrumentation:
-    excludes: ['spec/**/*']
+    excludes: ['spec/**/*', 'example/**/*', 'mock/**/*', 'gruntfile.js']

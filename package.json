@@ -19,11 +19,13 @@
   "license": "MIT",
   "dependencies": {
     "escodegen": "^1.8.1",
-    "esprima": "^3.0.0"
+    "esprima": "^3.0.0",
+    "mockery": "^2.0.0"
   },
   "devDependencies": {
     "chai": "^3.5.0",
     "chai-as-promised": "^6.0.0",
+    "chai-spies": "^0.7.1",
     "eslint": "^3.11.1",
     "grunt": "^1.0.1",
     "grunt-contrib-concat": "^1.0.1",
@@ -33,7 +35,8 @@
     "grunt-shell": "^2.1.0",
     "istanbul": "^0.4.5",
     "jasmine": "^2.5.2",
-    "mocha": "^3.2.0"
+    "mocha": "^3.2.0",
+    "mock-request": "^0.1.2"
   },
   "repository": {
     "type": "git",

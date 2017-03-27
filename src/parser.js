@@ -16,7 +16,8 @@
     // Internal constants
     const CONSTANT_INVALID = ['Identifier', 'ThisExpression'],
         CONSTANT_CHAIN = ['Identifier', 'MemberExpression'],
-        CUSTOM = Symbol('custom');
+        CUSTOM = Symbol('custom'),
+        ARRAY_EXPRESSION = Symbol('array-expression');
 
     // Constants
     module.exports.PROPERTY_ID = 'id'; // This identifies the name of the id property when parsing.
@@ -52,13 +53,14 @@
     *       * {string} context Additional context to be provided in any errors.
     *       * {object} contextManager Optional contextManager instead of creating a new one
     * @throws {error} When str is not a string.
+    * @returns {*} The loaded configuration.
     */
     function parse(str, options) {
         var code, config, cman;
 
         // Ensure the data is valid
         if (typeof str !== 'string') {
-            throw new Error('str MUST be a string');
+            throw new Error(`str MUST be a string. Got ${str && typeof str}`);
         }
 
         // If the string is empty, return null.
@@ -154,28 +156,45 @@
             block.elements.forEach(mapVal);
 
             // We do this so we can handle expressions in arrays
-            if (arr.some(e => typeof e === 'function')) {
-                arr = new Proxy(arr, {
-                    get
-                });
-            }
+            arr = new Proxy(arr, { get, set });
 
             return arr;
 
             /** Calls parseblock with the array as the second arg */
             function mapVal(block, index) {
-                var parsed = parseBlock(arr, block, index);
-                arr.push(parsed);
+                var set, parsed = parseBlock(arr, block, index);
+                if (typeof parsed === 'function') {
+                    // TODO: We need a way to fetch the object
+                    //  we are setting here without the getter?
+                    expression.attach(arr, arr.length, parsed, options);
+                } else {
+                    arr.push(parsed);
+                }
             }
 
             function get(target, prop) {
-                prop = parseInt(prop, 10);
-                if (!isNaN(prop) && expression.is(target, prop)) {
-                    // Only execute expressions
-                    return target[prop].apply(target);
+                if (typeof prop === 'symbol') {
+                    return target[prop];
+                }
+                if (expression.is(target, prop)) {
+                    return target[prop].get.call(target);
                 } else {
                     return target[prop];
                 }
+            }
+
+            function set(target, prop, value) {
+                if (typeof prop === 'symbol') {
+                    target[prop] = value;
+                    return true;
+                }
+                if (expression.is(target, prop)) {
+                    // Only execute expressions
+                    target[prop].set.call(target, value);
+                } else {
+                    target[prop] = value;
+                }
+                return true;
             }
         }
 
@@ -225,24 +244,18 @@
              *  not processed in the standard manner.
              */
             function processId(prop) {
-                var name;
-                if (prop.type === 'Property') {
-                    name = propName(prop.key);
-                    if (name === module.exports.PROPERTY_ID && prop.value.type === 'Identifier') {
-                        Object.defineProperty(result, contextManager.ID, {
-                            enumerable: false,
-                            value: prop.value.name,
-                            writable: !options.readOnly,
-                            configurable: !options.protectStructure
-                        });
-                        idprop = prop.value.name;
-                        return false;
-                    } else {
-                        return true;
-                    }
+                const name = propName(prop.key);
+                if (name === module.exports.PROPERTY_ID && prop.value.type === 'Identifier') {
+                    Object.defineProperty(result, contextManager.ID, {
+                        enumerable: false,
+                        value: prop.value.name,
+                        writable: !options.readOnly,
+                        configurable: !options.protectStructure
+                    });
+                    idprop = prop.value.name;
+                    return false;
                 } else {
-                    let msg = `unsupported property type "${prop.type}"`;
-                    throw new Error(errorMessage(msg, prop));
+                    return true;
                 }
             }
 
@@ -270,6 +283,7 @@
                         return block.value;
                     case 'Identifier':
                         return block.name;
+                    /* istanbul ignore next */
                     default:
                         let msg = `unable to determine a property name from a ` +
                             `"${block.type}" block`;
@@ -315,13 +329,9 @@
             if (!haveCustom && isConstantExpression(block)) {
                 return constantExpression(block);
             } else if (!haveCustom) {
-                if (block.type === 'TemplateLiteral') {
+                /*if (block.type === 'TemplateLiteral') {
                     block = parseTemplateLiteral(block);
-                    // If we have a literal value we just return it.
-                    if (block.type === 'Literal') {
-                        return block.value;
-                    }
-                }
+                }*/
 
                 // Process the identifiers
                 block = processIdentifiers(propertyName, block);
@@ -345,11 +355,11 @@
                 var val, e;
                 try {
                     val = func.call(this, context);
-                } catch (err) {
+                } catch (ex) {
                     // TODO: We seem to be getting double position information
                     //  Check where else we are adding this information and if
                     //  this is an offender.
-                    e = prepareError(err, oblock);
+                    e = prepareError(ex, oblock);
                     throw e;
                 }
                 return val;
@@ -379,58 +389,6 @@
         }
 
         /**
-         * Returns a function which can be used as a getter to get the value of the template
-         *   literal.
-         */
-        function parseTemplateLiteral(block) {
-            // TODO: Do we really need this conversion...?
-            //  Why can't we just pass this off as a normal expression?
-            var parts, oblock, i;
-            if (block.expressions.length) {
-                // TODO: We need a way to monitor potential changes to identifiers and trigger
-                //  change events on the monitor.
-
-                parts = [];
-                for (i = 0; i < block.quasis.length; i++) {
-                    parts.push({
-                        type: 'Literal',
-                        value: block.quasis[i].value.cooked
-                    });
-                    if (!block.quasis[i].tail) {
-                        parts.push(block.expressions[i]);
-                    }
-                }
-
-                // Keep a reference to the original for errors
-                oblock = block;
-
-                // Create binary expression
-                block = {
-                    type: 'BinaryExpression',
-                    operator: '+',
-                    left: parts.shift(),
-                    right: parts.shift()
-                };
-
-                while (parts.length) {
-                    block = {
-                        type: 'BinaryExpression',
-                        operator: '+',
-                        left: block,
-                        right: parts.shift()
-                    };
-                }
-
-                return block;
-            } else {
-                return {
-                    type: 'Literal',
-                    value: block.quasis[0].value.cooked
-                };
-            }
-        }
-
-        /**
          * Checks whether the given AST represents a constant expression
          *  which can be executed on the spot to provide a value.
          */
@@ -444,8 +402,6 @@
                     return val.every(processVal);
                 } else if (val && typeof val === 'object') {
                     return isConstantExpression(val);
-                } else if (typeof val === 'function') {
-                    return false;
                 } else {
                     return true;
                 }
@@ -468,6 +424,7 @@
 
         /** Attempts to add line and column information to an error */
         function prepareError(err, block) {
+            /* istanbul ignore else */
             if (err instanceof Error) {
                 err.message = errorMessage(err.message, block);
             } else {
@@ -500,6 +457,7 @@
                     case 'Identifier':
                     case 'Property':
                         return parseExpression(result, block, propertyName);
+                    /* istanbul ignore next */
                     default:
                         // We should never arrive here if supported is true.
                         throw new Error('Critical error. Invalid program!');
@@ -560,10 +518,11 @@
                 case 'Program':
                     return false;
 
+                /* istanbul ignore next */
                 default:
                     // TODO: Should an error be thrown here? Not very forwards compatible...
                     //  Perhaps just log an return false?
-                    let msg = `unrecognized block type "${block.type}"`;
+                    let msg = `Unrecognized block type "${block.type}"`;
                     throw new Error(errorMessage(msg, block));
             }
         }
@@ -641,6 +600,7 @@
                     case 'Literal':
                         // Nothing to process
                         break;
+                    /* istanbul ignore next */
                     default:
                         throw new Error('invalid program! Got ' + block.type);
                 }
@@ -721,6 +681,7 @@
         /** Creates an error with line and column information. */
         function errorMessage(msg, block) {
             var pos;
+            /* istanbul ignore else */
             if (block.loc) {
                 pos = `\nLine: ${block.loc.start.line}. Column: ${block.loc.start.column}`;
             } else {
@@ -728,6 +689,7 @@
             }
             msg = msg + pos;
             if (options.context) {
+                /* istanbul ignore else */
                 if (msg) {
                     msg = msg + '. ';
                 }

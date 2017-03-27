@@ -1,9 +1,0 @@
-{
-    "extends": "../.jshintrc",
-    "maxlen": 200,
-    "globals": {
-        "expect": true,
-        "assert": true,
-        "chai": true
-    }
-}

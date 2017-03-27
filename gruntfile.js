@@ -36,7 +36,7 @@ module.exports = function(grunt) {
             }
         },
         shell: {
-            cover: 'istanbul cover grunt test',
+            cover: 'istanbul --include-all-sources cover grunt test',
             options: {
                 stdout: false,
                 stderr: false,

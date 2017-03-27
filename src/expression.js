@@ -1,3 +1,7 @@
+/**
+ * @module Expression module. This is a module to hold code dealing with config expressions.
+ */
+
 'use strict';
 
 // Constants
@@ -17,7 +21,15 @@ module.exports.copy = copy;
 module.exports.attach = attach;
 module.exports.is = isExpression;
 module.exports.prepareExpression = prepareExpression;
+module.exports.dependantOn = dependantOn;
+module.exports.context = context;
 module.exports.BASE_NAME = DEFAULT_BASE_NAME;
+
+// Globals
+// Note: This is quite the hack. Make it so we always return
+//  false for isExpression. Then when the array getter checks,
+//  it will return the underlying expression object... disgusting :O
+var noExpressions;
 
 function prepareExpression(expression, dependencies, custom) {
     if (custom) {
@@ -29,9 +41,29 @@ function prepareExpression(expression, dependencies, custom) {
 }
 
 function isExpression(obj, name) {
-    if (obj && typeof obj === 'object') {
-        let desc = Object.getOwnPropertyDescriptor(obj, name);
-        return Boolean(desc.get && desc.get[EXPRESSION]);
+    var desc;
+    if (noExpressions) {
+        return false;
+    } else if (Array.isArray(obj)) {
+        noExpressions = true;
+        try {
+            desc = obj[name];
+        } finally {
+            noExpressions = false;
+        }
+        return Boolean(desc && desc[EXPRESSION] === true);
+    } else if (obj && typeof obj === 'object') {
+        desc = Object.getOwnPropertyDescriptor(obj, name);
+        return Boolean(desc && desc.get && desc.get[EXPRESSION]);
+    } else {
+        return false;
+    }
+}
+
+function dependantOn(obj, name, dependency) {
+    var desc = Object.getOwnPropertyDescriptor(obj, name);
+    if (desc.get && Array.isArray(desc.get[DEPENDENCIES])) {
+        return desc.get[DEPENDENCIES].indexOf(dependency) > -1;
     } else {
         return false;
     }
@@ -88,13 +120,24 @@ function createExpressionSetter(get) {
 
 /** Resets an expression set override. */
 function clearOverride(obj, name) {
-    var desc = Object.getOwnPropertyDescriptor(obj, name);
-    if (desc && desc.get && desc.get.hasOwnProperty(OVERRIDE)) {
-        delete desc.get[OVERRIDE];
-        return true;
-    } else {
-        return false;
+    var desc;
+    if (isExpression(obj, name)) {
+        if (Array.isArray(obj)) {
+            noExpressions = true;
+            try {
+                desc = obj[name];
+            } finally {
+                noExpressions = false;
+            }
+        } else {
+            desc = Object.getOwnPropertyDescriptor(obj, name);
+        }
+        if (desc && desc.get && desc.get.hasOwnProperty(OVERRIDE)) {
+            delete desc.get[OVERRIDE];
+            return true;
+        }
     }
+    return false;
 }
 
 /** Copies an expression from one object to another. */
@@ -115,17 +158,26 @@ function attach(obj, name, expression, options) {
         throw new Error(`Supplied expression value MUST be a function. ` +
             `Got "${expression && typeof expression}"`);
     }
+
     options = options || {};
     getter = createExpressionGetter(expression);
     setter = createExpressionSetter(getter);
-    definition = {
-        enumerable: true,
-        configurable: !options.protectStructure,
-        get: getter,
-        set: setter
-    };
-    // Define the property on the result
-    Object.defineProperty(obj, name, definition);
+    if (typeof name !== 'symbol' && Array.isArray(obj) && Number.isInteger(parseFloat(name))) {
+        obj[name] = {
+            get: getter,
+            set: setter
+        };
+        obj[name][EXPRESSION] = true;
+    } else {
+        definition = {
+            enumerable: true,
+            configurable: !options.protectStructure,
+            get: getter,
+            set: setter
+        };
+        // Define the property on the result
+        Object.defineProperty(obj, name, definition);
+    }
 }
 
 /**

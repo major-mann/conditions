@@ -2,10 +2,10 @@
 
 // Constants
 const CONFIG_OBJECT = Symbol('config-object'),
-    DEPENDENCIES = Symbol('dependencies'),
     CONTEXT = Symbol('context'),
     EVENTS = Symbol('events'),
     CHANGE = 'change',
+    REF_CHANGE = 'ref-change',
     OPTIONS = {
         readOnly: false,
         protectStructure: false
@@ -17,19 +17,335 @@ module.exports.is = isConfigObject;
 module.exports.context = context;
 module.exports.events = events;
 module.exports.CHANGE = CHANGE;
-module.exports.DEPENDENCIES = DEPENDENCIES;
 
 // Dependencies
 const EventEmitter = require('events'),
-    contextManager = require('./context-manager.js');
+    contextManager = require('./context-manager.js'),
+    changeTracker = require('./change-tracker.js'),
+    expression = require('./expression.js');
 
-function create(obj, options) {
+function create(obj, options, cache) {
+    var res, i, events, preventCircularEvent = {};
+    res = obj;
     if (!isConfigObject(obj) && obj && typeof obj === 'object') {
+        cache = cache || new WeakMap();
+        if (cache.has(obj)) {
+            return cache.get(obj);
+        }
+        events = {};
         options = Object.assign({}, OPTIONS, options);
-        obj = initialize(obj, options);
-        obj = managed(obj, options);
+        res = initialize(obj, options);
+        if (!res || !res[CONFIG_OBJECT]) {
+            // If we have something like date or regexp
+            return res;
+        }
+        res = managed(res, options);
+        res = changeTracker(res, {
+            customRevert: expression.clearOverride
+        });
+
+        // Register the proxy in the context, and throw on duplicate
+        res[CONTEXT].register(res, true);
+
+        // Caches the result to handle circular refs
+        cache.set(obj, res);
+
+        if (Array.isArray(res)) {
+            for (i = 0; i < obj.length; i++) {
+                res.push(create(res[i], options, cache));
+            }
+        } else {
+            Object.keys(obj).forEach(k => copy(obj, res, k, options, cache));
+        }
+
+        // Add the child change events
+        Object.keys(res)
+            .filter(k => isConfigObject(res[k]))
+            .forEach(k => addChildChangeEvent(res, k, res[k]));
+
+        changeTracker.commit(res);
     }
-    return obj;
+    return res;
+
+    function addChildChangeEvent(obj, key, value) {
+        if (typeof key === 'string') {
+            events[key] = function onChildChange(name, value, old) {
+                if (preventCircularEvent[name]) {
+                    return;
+                }
+                name = `${key}.${name}`;
+                preventCircularEvent[name] = true;
+                obj[EVENTS].emit(CHANGE, name, value, old);
+                delete preventCircularEvent[name];
+            };
+            value[EVENTS].on(CHANGE, events[key]);
+        }
+    }
+
+    /** Provides events and object set */
+    function managed(obj, options) {
+        var result, len, isArray, traps, rootEvents,
+            expressions = {};
+
+        obj[EVENTS].on(CHANGE, onChange);
+        // Get the root object
+        rootEvents = obj[CONTEXT].source();
+        rootEvents = rootEvents && rootEvents[EVENTS];
+
+        /* istanbul ignore else */
+        if (rootEvents) {
+            if (obj[CONTEXT].source() === obj) {
+                // For root objects this will emit a change event for the ref
+                rootEvents.on(REF_CHANGE, onRootRefChange);
+            } else {
+                // This will only handle the event, not emit any other event
+                //  in regards to this property
+                rootEvents.on(REF_CHANGE, onSubRefChange);
+            }
+        }
+        isArray = Array.isArray(obj);
+        if (isArray) {
+            len = obj.length;
+        }
+
+        traps = {
+            deleteProperty: del,
+            defineProperty
+        };
+        if (isArray) {
+            traps.set = arrSet;
+        } else {
+            traps.set = objSet;
+        }
+        result = new Proxy(obj, traps);
+
+        // Now we need to process all properties
+        return result;
+
+        function onRootRefChange(name, value, old) {
+            onRefChange(name, value, old, () => rootEvents.emit(CHANGE, name, value, old));
+        }
+
+        function onSubRefChange(name, value, old) {
+            onRefChange(name, value, old, () => onChange(name, value, old))
+        }
+
+        function onRefChange(name, value, old, handler) {
+            var parts = name.split('.');
+            // If a property with the root part of the name is found, it will take
+            //  preference over an ID reference, so the change is not valid for this
+            //  object.
+            if (!result.hasOwnProperty(parts[0])) {
+                handler();
+            }
+        }
+
+        function onChange(name, value, old) {
+            Object.keys(expressions).forEach(process);
+
+            /** Processes an expression to check if it's change event should be raised. */
+            function process(exp) {
+                var current;
+                if (expression.dependantOn(result, exp, name)) {
+                    try {
+                        current = result[exp];
+                    } catch (ex) {
+                        // Note: We purposefully swallow any error,
+                        //  don't emit the change event, and don't update
+                        //  the old value.
+                        return;
+                    }
+                    // Note: If the new value throws an exception we don't want the change event
+                    //  to raise, and we don't want the old value to be updated
+                    obj[EVENTS].emit(CHANGE, exp, current, expressions[exp]);
+                    expressions[exp] = result[exp];
+                }
+            }
+        }
+
+        function deliverArrayLength() {
+            if (len !== obj.length) {
+                obj[EVENTS].emit(CHANGE, 'length', obj.length, len);
+                len = obj.length;
+            }
+        }
+
+        function arrSet(obj, name, value) {
+            // Handle the special case length extend, and pass along to the standard object set
+            if (name === 'length' && value >= obj.length) {
+                obj.length = value;
+                deliverArrayLength();
+                return true;
+            }
+            return objSet(obj, name, value);
+        }
+
+        function objSet(obj, name, value) {
+            var old, hasOld, standard, evname, opts;
+            // If we have the property already, and are set to read only
+            //  we will not allow a change in value.
+            hasOld = obj.hasOwnProperty(name);
+            if (options.readOnly && hasOld) {
+                // Return true without doing anything
+                return true;
+            }
+            old = obj[name];
+            if (!hasOld || old !== value) {
+                if (events[name]) {
+                    obj[EVENTS].removeListener(CHANGE, events[name]);
+                    delete events[name];
+                }
+
+                deregister(obj, name);
+
+                // Check we have an object or array that is not a Date or RegExp.
+                standard = standardObject(value);
+                if (standard) {
+                    opts = Object.assign({ }, options, { contextManager: obj[CONTEXT] });
+                    value = create(value, opts);
+                }
+                if (obj.hasOwnProperty(name)) {
+                    obj[name] = value;
+                } else {
+                    // Note: We have to do this so we don't update the values on the
+                    //  prototype.
+                    Object.defineProperty(obj, name, {
+                        configurable: !options.protectStructure,
+                        writable: !options.readOnly,
+                        enumerable: true,
+                        value
+                    });
+                }
+                if (standard) {
+                    // Pass any events from the child object to this object
+                    addChildChangeEvent(obj, name, value);
+                }
+
+                register(obj, name);
+                raiseChangeEvent(name, value, old);
+            }
+            return true;
+        }
+
+        function del(obj, name) {
+            var old;
+            if (!obj.hasOwnProperty(name)) {
+                return true;
+            }
+            if (options.readOnly) {
+                return false;
+            }
+            if (events[name]) {
+                obj[EVENTS].removeListener(CHANGE, events[name]);
+                delete events[name];
+            }
+            old = obj[name];
+
+            deregister(obj, name);
+
+            delete obj[name];
+            delete expressions[name];
+
+            raiseChangeEvent(name, undefined, old);
+            return true;
+        }
+
+        function defineProperty(obj, name, descriptor) {
+            var res, old, hasOld, changed, opts, curr, desc = {
+                enumerable: descriptor.enumerable,
+                configurable: !options.protectStructure
+            };
+
+            if (options.readOnly && result.hasOwnProperty(name)) {
+                return false;
+            }
+
+            // Ensure we deregister on replacement
+            old = obj[name];
+            hasOld = obj.hasOwnProperty(name);
+
+            // TODO: Think this block can be made common
+            if (name === contextManager.ID) {
+                obj[CONTEXT].deregister(obj);
+            } else {
+                obj[CONTEXT].deregister(obj[name]);
+            }
+
+            if (descriptor.hasOwnProperty('get')) {
+                desc.get = descriptor.get;
+            }
+            if (descriptor.hasOwnProperty('set') && !options.readOnly) {
+                desc.set = descriptor.set;
+            }
+            if (descriptor.hasOwnProperty('value')) {
+                desc.writable = !options.readOnly;
+                opts = Object.assign({ }, options, { contextManager: obj[CONTEXT] });
+                desc.value = create(descriptor.value, opts);
+                if (desc.value && typeof desc.value === 'object') {
+                    // Pass any events from the child object to this object
+                    addChildChangeEvent(obj, name, desc.value);
+                    // TODO: Shouldn't this go through the register function?
+                    // Register without allowing duplicates
+                    obj[CONTEXT].register(desc.value, true);
+                }
+            }
+            res = Reflect.defineProperty(obj, name, desc);
+
+            if (expression.is(obj, name)) {
+                // Store the result so we can pass the old
+                //  value on change
+                try {
+                    expressions[name] = obj[name];
+                } catch (ex) {
+                    // Note: We purposefully swallow any error
+                    expressions[name] = undefined;
+                }
+            } else {
+                delete expressions[name];
+            }
+
+            register(obj, name);
+
+            try {
+                // Protect againsr expression failure
+                curr = obj[name];
+            } catch (ex) {
+                // We swallow the error.
+                return true;
+            }
+
+            changed = curr !== old;
+            if (!hasOld || changed) {
+                raiseChangeEvent(name, curr, old);
+            }
+            return true;
+        }
+
+        function raiseChangeEvent(name, value, old) {
+            if (typeof name === 'string') {
+                obj[EVENTS].emit(CHANGE, name, value, old);
+                if (obj[contextManager.ID] && rootEvents) {
+                    var evname = obj[contextManager.ID] + '.' + name;
+                    rootEvents.emit(REF_CHANGE, evname, value, old);
+                }
+            }
+        }
+
+        function register(obj, name) {
+            if (name === contextManager.ID) {
+                // Register and throw on duplicate
+                obj[CONTEXT].register(obj, true);
+            }
+        }
+
+        function deregister(obj, name) {
+            if (name === contextManager.ID) {
+                obj[CONTEXT].deregister(obj);
+            } else {
+                obj[CONTEXT].deregister(obj[name]);
+            }
+        }
+    }
 }
 
 function context(obj) {
@@ -44,228 +360,27 @@ function isConfigObject(obj) {
     return Boolean(obj && obj[CONFIG_OBJECT]);
 }
 
-/** Provides events and object set */
-function managed(obj, options) {
-    var result, possibleLengthChange, len, events = {}, isArray, traps;
-
-    // TODO: Something with dependencies...
-    isArray = Array.isArray(obj);
-    if (isArray) {
-        len = obj.length;
-        possibleLengthChange = deliverArrayLength;
-    } else {
-        possibleLengthChange = () => {};
-    }
-
-    // Add the child change events
-    Object.keys(obj)
-        .filter(k => configObject(obj[k]))
-        .forEach(k => addChildChangeEvent(obj, k, obj[k]));
-
-    traps = {
-        deleteProperty: del,
-        defineProperty
-    };
-    if (isArray) {
-        traps.set = arrSet;
-    } else {
-        traps.set = objSet;
-    }
-    result = new Proxy(obj, traps);
-    return result;
-
-    function deliverArrayLength() {
-        if (len !== obj.length) {
-            obj[EVENTS].emit(CHANGE, 'length', obj.length, len);
-            len = obj.length;
-        }
-    }
-
-    function arrSet(obj, name, value) {
-        // Handle the special case length extend, and pass along to the standard object set
-        if (name === 'length' && value >= obj.length) {
-            obj.length = value;
-            return true;
-        }
-        return objSet(obj, name, value);
-    }
-
-    function objSet(obj, name, value) {
-        var old = obj.hasOwnProperty(name) ?
-            obj[name] :
-            undefined;
-        // If we have the property already, and are set to read only
-        //  we will not allow a change in value.
-        if (options.readOnly && obj.hasOwnProperty(name)) {
-            // Return true without doing anything
-            return true;
-        }
-        if (old !== value) {
-            if (events[name]) {
-                obj[EVENTS].removeListener(CHANGE, events[name]);
-                delete events[name];
-            }
-
-            // Ensure de-registration on replacement
-            if (name === contextManager.ID) {
-                obj[CONTEXT].deregister(obj);
-            } else {
-                obj[CONTEXT].deregister(old);
-            }
-
-            // Check we have an object or array that is not a Date or RegExp.
-            if (standardObject(value)) {
-                value = create(value, options);
-                // Pass any events from the child object to this object
-                addChildChangeEvent(obj, name, value);
-            }
-            if (obj.hasOwnProperty(name)) {
-                obj[name] = value;
-            } else {
-                // Note: We have to do this so we don't update the values on the
-                //  prototype.
-                Object.defineProperty(obj, name, {
-                    configurable: !options.protectStructure,
-                    writable: !options.readOnly,
-                    enumerable: true,
-                    value
-                });
-            }
-
-            // If we are setting the ID, register the property
-            if (name === contextManager.ID) {
-                obj[CONTEXT].register(obj, true);
-            }
-            obj[EVENTS].emit(CHANGE, name, value, old);
-
-            // If we have an ID, try to emit a change event for that ID on the
-            //  context manager root object.
-            if (obj[contextManager.ID]) {
-                let root = obj[CONTEXT].source();
-                root = root && root[EVENTS];
-                if (root) {
-                    root.emit(CHANGE, result[contextManager.ID] + '.' + name, value, old);
-                }
-            }
-        }
-        return true;
-    }
-
-    function del(obj, name) {
-        var old, hasOld;
-        if (!obj.hasOwnProperty(name)) {
-            return true;
-        }
-        if (options.readOnly) {
-            return false;
-        }
-        if (events[name]) {
-            obj[EVENTS].removeListener(CHANGE, events[name]);
-            delete events[name];
-        }
-        old = obj[name];
-        hasOld = obj.hasOwnProperty(name);
-
-        // Ensure de-registration
-        if (name === contextManager.ID) {
-            obj[CONTEXT].deregister(obj);
-        } else {
-            obj[CONTEXT].deregister(old);
-        }
-
-        delete obj[name];
-
-        if (hasOld) {
-            obj[EVENTS].emit(CHANGE, name, undefined, old);
-            if (obj[contextManager.ID]) {
-                obj[EVENTS].emit(CHANGE,
-                    obj[contextManager.ID] + '.' + name,
-                    undefined, // New value is undefined
-                    old);
-            }
-        }
-
-        return true;
-    }
-
-    function defineProperty(obj, name, descriptor) {
-        var res, old, hasOld, desc = {
-            enumerable: descriptor.enumerable,
-            configurable: !options.protectStructure
-        };
-
-        if (options.readOnly && result.hasOwnProperty(name)) {
-            return false;
-        }
-
-        // Ensure we deregister on replacement
-        old = obj[name];
-        hasOld = obj.hasOwnProperty(name);
-        if (name === contextManager.ID) {
-            obj[CONTEXT].deregister(obj);
-        } else {
-            obj[CONTEXT].deregister(obj[name]);
-        }
-        if (descriptor.hasOwnProperty('get')) {
-            desc.get = descriptor.get;
-        }
-        if (descriptor.hasOwnProperty('set') && !options.readOnly) {
-            desc.set = descriptor.set;
-        }
-        if (descriptor.hasOwnProperty('value')) {
-            desc.writable = !options.readOnly;
-            desc.value = create(descriptor.value, options);
-            if (desc.value && typeof desc.value === 'object') {
-                // Pass any events from the child object to this object
-                addChildChangeEvent(obj, name, desc.value);
-                // Register without allowing duplicates
-                obj[CONTEXT].register(desc.value, true);
-            }
-        }
-        res = Reflect.defineProperty(obj, name, desc);
-        if (name === contextManager.ID) {
-            obj[CONTEXT].register(obj);
-        }
-        if (hasOld && obj[name] !== old) {
-            obj[EVENTS].emit(CHANGE, name, obj[name], old);
-            if (obj[contextManager.ID]) {
-                obj[EVENTS].emit(CHANGE,
-                    result[contextManager.ID] + '.' + name,
-                    obj[name],
-                    old
-                );
-            }
-        }
-        return true;
-    }
-
-    function addChildChangeEvent(obj, key, value) {
-        events[key] = function onChildChange(name, value, old) {
-            obj[EVENTS].emit(`${key}.${name}`, value, old);
-        };
-        value = value || obj[key];
-        obj[EVENTS].on(CHANGE, events[key]);
-    }
-}
-
+/**
+ * Initializes a new configuration object using the supplied object as a base.
+ * @param {object} obj The object to initialize with.
+ * @param {object} options Options to use when constructing the configuration objects.
+ */
 function initialize(obj, options) {
-    var res, cman;
-    if (configObject(obj)) {
-        return obj;
-    } else if (Array.isArray(obj)) {
-        res = obj.map(element => initialize(element, options));
+    var res, cman, i;
+    if (Array.isArray(obj)) {
+        res = [];
     } else if (obj instanceof Date) {
-        return new Date(obj.getTime());
+        res = obj.getTime();
+        return new Date(res);
     } else if (obj instanceof RegExp) {
-        return new RegExp(obj.toString(), obj.flags);
-    } else if (obj && typeof obj === 'object') {
-        res = {};
-        // TODO: Need to search through object for ids to add / update?
-        Object.keys(obj).forEach(k => copy(obj, res, k, options));
+        res = new RegExp(obj.source, obj.flags);
+        return res;
     } else {
-        return obj;
+        res = {};
+        if (obj[contextManager.ID]) {
+            res[contextManager.ID] = obj[contextManager.ID];
+        }
     }
-    options = options || {};
     if (options.contextManager) {
         cman = options.contextManager;
     } else {
@@ -289,9 +404,6 @@ function initialize(obj, options) {
         });
     }
 
-    // Register, and throw on duplicate
-    cman.register(res, true);
-
     Object.defineProperty(res, CONFIG_OBJECT, {
         enumerable: false,
         value: true,
@@ -305,22 +417,23 @@ function initialize(obj, options) {
         writable: false,
         configurable: false
     });
+    // TODO: This should be adjusted to property length + 11 (default)
+    //      then in property creation (including set) and deletion
+    //      it should be plus 1ned and -1ned accordingly
+    res[EVENTS].setMaxListeners(100);
 
     return res;
 }
 
-function configObject(obj) {
-    if (obj && obj[CONFIG_OBJECT]) {
-        return obj;
-    }
-}
-
-function copy(src, dest, name, options) {
+function copy(src, dest, name, options, cache) {
     var ddesc, sdesc = Object.getOwnPropertyDescriptor(src, name);
-    ddesc = { configurable: !options.protectStructure };
+    ddesc = {
+        enumerable: sdesc.enumerable,
+        configurable: !options.protectStructure
+    };
     if (sdesc.hasOwnProperty('value')) {
         ddesc.writable = !options.readOnly;
-        ddesc.value = sdesc.value;
+        ddesc.value = create(sdesc.value, options, cache);
     } else {
         ddesc.get = sdesc.get;
         ddesc.set = sdesc.set;

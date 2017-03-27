@@ -1,13 +1,17 @@
 describe('levels', function () {
     'use strict';
 
-    var parse, extend, fs = require('fs');
+    var parse, extend, oWarn, fs = require('fs');
 
     beforeEach(function () {
         delete require.cache[require.resolve('../src/levels.js')];
         delete require.cache[require.resolve('../src/parser.js')];
         extend = require('../src/levels.js');
         parse = require('../src/parser.js');
+        oWarn = console.warn;
+    });
+    afterEach(function () {
+        console.warn = oWarn;
     });
 
     describe('checks', function () {
@@ -44,6 +48,27 @@ describe('levels', function () {
             result = extend(config, [ext]);
             expect(result.foo).to.equal('bar');
             expect(result.hello).to.equal('world');
+        });
+        it('should handle circular references', function () {
+            var config = { ext: {} },
+                ext = {
+                    foo: 'bar',
+                    hello: 'world'
+                },
+                result;
+            ext.ext = ext;
+            debugger;
+            result = extend(config, [ext]);
+            expect(result.foo).to.equal('bar');
+            expect(result.hello).to.equal('world');
+        });
+        it('should return a copy of arrays even when overwriting', function () {
+            var res, arr = [1,2,3,4,5];
+            debugger;
+            res = extend('foo', [arr]);
+            expect(res).to.be.an('array');
+            expect(res).not.to.equal(arr);
+            expect(res.length).to.equal(5);
         });
         it('delete properties extended if they are undefined', function () {
             var config = { 'test': 'value' },
@@ -137,6 +162,22 @@ describe('levels', function () {
                 expect(result.vals[0]).to.equal(1);
                 expect(result.vals[1]).to.be.an('object');
             });
+            it('should not apply commands if COMMAND_CHECK is not a function', function () {
+                var config, ext, result;
+                config = {
+                    vals: [1,2,3,4,5]
+                };
+                ext = {
+                    vals: [
+                        { $: { action: 'remove', find: 2 } }
+                    ]
+                };
+                delete extend.COMMAND_CHECK;
+                result = extend(config, [ext]);
+                expect(result.vals).to.be.an('array');
+                expect(result.vals.length).to.equal(1);
+                expect(result.vals[0]).to.be.an('object');
+            });
             it('should allow elements to be searched by reference', function () {
                 var config, ext, result;
                 config = {
@@ -193,6 +234,79 @@ describe('levels', function () {
                 expect(result.vals[4]).to.equal(5);
                 expect(result.vals[5]).to.equal(6);
             });
+            it('should allow elements to be inserted', function () {
+                var config, ext, result;
+                config = {
+                    vals: [1,2,3,4,5]
+                };
+                ext = {
+                    vals: [
+                        { $: { action: 'insert', value: 2.5, find: 3 } }
+                    ]
+                };
+                result = extend(config, [ext]);
+                expect(result.vals).to.be.an('array');
+                expect(result.vals.length).to.equal(6);
+                expect(result.vals[0]).to.equal(1);
+                expect(result.vals[1]).to.equal(2);
+                expect(result.vals[2]).to.equal(2.5);
+                expect(result.vals[3]).to.equal(3);
+                expect(result.vals[4]).to.equal(4);
+                expect(result.vals[5]).to.equal(5);
+            });
+            it('should allow elements to be inserted after the specified element if after is true', function () {
+                var config, ext, result;
+                config = {
+                    vals: [1,2,3,4,5]
+                };
+                ext = {
+                    vals: [
+                        { $: { action: 'insert', value: 2.5, find: 3, after: true } }
+                    ]
+                };
+                result = extend(config, [ext]);
+                expect(result.vals).to.be.an('array');
+                expect(result.vals.length).to.equal(6);
+                expect(result.vals[0]).to.equal(1);
+                expect(result.vals[1]).to.equal(2);
+                expect(result.vals[2]).to.equal(3);
+                expect(result.vals[3]).to.equal(2.5);
+                expect(result.vals[4]).to.equal(4);
+                expect(result.vals[5]).to.equal(5);
+            });
+            it('should not insert if the specified element could not be found', function () {
+                var config, ext, result;
+                config = {
+                    vals: [1,2,3,4,5]
+                };
+                ext = {
+                    vals: [
+                        { $: { action: 'insert', value: 2.5, find: 100 } }
+                    ]
+                };
+                result = extend(config, [ext]);
+                expect(result.vals).to.be.an('array');
+                expect(result.vals.length).to.equal(5);
+                expect(result.vals[0]).to.equal(1);
+                expect(result.vals[1]).to.equal(2);
+                expect(result.vals[2]).to.equal(3);
+                expect(result.vals[3]).to.equal(4);
+                expect(result.vals[4]).to.equal(5);
+            });
+            it('should print a warning of a find value is not specified for insert', function () {
+                var config, ext, result;
+                config = {
+                    vals: [1,2,3,4,5]
+                };
+                ext = {
+                    vals: [
+                        { $: { action: 'insert', value: 2.5 } }
+                    ]
+                };
+                console.warn = chai.spy();
+                result = extend(config, [ext]);
+                expect(console.warn).to.have.been.called.once();
+            });
             it('should allow elements to be removed', function () {
                 var config, ext, result;
                 config = {
@@ -210,6 +324,39 @@ describe('levels', function () {
                 expect(result.vals[1]).to.equal(3);
                 expect(result.vals[2]).to.equal(4);
                 expect(result.vals[3]).to.equal(5);
+            });
+            it('should only remove if the value is found', function () {
+                var config, ext, result;
+                config = {
+                    vals: [1,2,3,4,5]
+                };
+                ext = {
+                    vals: [
+                        { $: { action: 'remove', find: 100 } }
+                    ]
+                };
+                result = extend(config, [ext]);
+                expect(result.vals).to.be.an('array');
+                expect(result.vals.length).to.equal(5);
+                expect(result.vals[0]).to.equal(1);
+                expect(result.vals[1]).to.equal(2);
+                expect(result.vals[2]).to.equal(3);
+                expect(result.vals[3]).to.equal(4);
+                expect(result.vals[4]).to.equal(5);
+            });
+            it('should print a warning of a find value is not specified for remove', function () {
+                var config, ext, result;
+                config = {
+                    vals: [1,2,3,4,5]
+                };
+                ext = {
+                    vals: [
+                        { $: { action: 'remove' } }
+                    ]
+                };
+                console.warn = chai.spy();
+                result = extend(config, [ext]);
+                expect(console.warn).to.have.been.called.once();
             });
             it('should allow elements to be replaced', function () {
                 var config, ext, result;
@@ -229,6 +376,39 @@ describe('levels', function () {
                 expect(result.vals[2]).to.equal(3);
                 expect(result.vals[3]).to.equal(4);
                 expect(result.vals[4]).to.equal(5);
+            });
+            it('should only update if the value is found', function () {
+                var config, ext, result;
+                config = {
+                    vals: [1,2,3,4,5]
+                };
+                ext = {
+                    vals: [
+                        { $: { action: 'update', find: 1000, value: 1000 } }
+                    ]
+                };
+                result = extend(config, [ext]);
+                expect(result.vals).to.be.an('array');
+                expect(result.vals.length).to.equal(5);
+                expect(result.vals[0]).to.equal(1);
+                expect(result.vals[1]).to.equal(2);
+                expect(result.vals[2]).to.equal(3);
+                expect(result.vals[3]).to.equal(4);
+                expect(result.vals[4]).to.equal(5);
+            });
+            it('should print a warning of a find value is not specified for update', function () {
+                var config, ext, result;
+                config = {
+                    vals: [1,2,3,4,5]
+                };
+                ext = {
+                    vals: [
+                        { $: { action: 'update', value: 10 } }
+                    ]
+                };
+                console.warn = chai.spy();
+                result = extend(config, [ext]);
+                expect(console.warn).to.have.been.called.once();
             });
             it('should allow elements to be cleared', function () {
                 var config, ext, result;
@@ -264,6 +444,53 @@ describe('levels', function () {
                 expect(result.vals[3].id).to.equal(4);
                 expect(result.vals[1].foo).to.be.an('object');
                 expect(result.vals[1].foo.bar).to.equal('baz');
+            });
+            it('should only extend if the value is found', function () {
+                var config, ext, result;
+                config = {
+                    vals: [{ id: 1 },{ id: 2 },{ id: 3 },{ id: 4 },{ id: 5 }]
+                };
+                ext = {
+                    vals: [
+                        { $: { action: 'extend', find: { id: 1000 }, value: { foo: { bar: 'baz' } } } }
+                    ]
+                };
+                result = extend(config, [ext]);
+                expect(result.vals).to.be.an('array');
+                expect(result.vals.length).to.equal(5);
+                expect(result.vals[0].id).to.equal(1);
+                expect(result.vals[1].id).to.equal(2);
+                expect(result.vals[2].id).to.equal(3);
+                expect(result.vals[3].id).to.equal(4);
+                expect(result.vals[4].id).to.equal(5);
+            });
+            it('should print a warning of a find value is not specified for extend', function () {
+                var config, ext, result;
+                config = {
+                    vals: [{ id: 1 },{ id: 2 },{ id: 3 },{ id: 4 },{ id: 5 }]
+                };
+                ext = {
+                    vals: [
+                        { $: { action: 'extend', value: { foo: { bar: 'baz' } } } }
+                    ]
+                };
+                console.warn = chai.spy();
+                result = extend(config, [ext]);
+                expect(console.warn).to.have.been.called.once();
+            });
+            it('should print a warning for any unrecognized action', function () {
+                var config, ext, result;
+                config = {
+                    vals: [{ id: 1 },{ id: 2 },{ id: 3 },{ id: 4 },{ id: 5 }]
+                };
+                ext = {
+                    vals: [
+                        { $: { action: 'foo-bar-baz', value: { foo: { bar: 'baz' } } } }
+                    ]
+                };
+                console.warn = chai.spy();
+                result = extend(config, [ext]);
+                expect(console.warn).to.have.been.called.once();
             });
 
             it('should set the prototypes so that base properties are available', function () {
