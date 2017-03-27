@@ -74,6 +74,13 @@ describe('Expression module', function () {
             expression.attach(arr, 0, exp);
             expect(set).to.have.been.called.once();
         });
+        it('should not attach a setter if options.readOnly is truthy', function () {
+            expression.attach(obj, 'foo', exp, { readOnly: true });
+            const desc = Object.getOwnPropertyDescriptor(obj, 'foo');
+            expect(desc.get).to.be.a('function');
+            expect(desc.set).to.equal(undefined);
+
+        });
         it('should define the property if obj is not an array', function () {
             var obj, defProp;
             defProp = chai.spy(function (target, name, desc) {

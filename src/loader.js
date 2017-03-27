@@ -15,7 +15,8 @@ var OPTIONS_DEFAULT = {
 };
 
 // Dependencies
-const parser = require('./parser');
+const parser = require('./parser.js'),
+    configObject = require('./config-object.js');
 
 /**
  * Parses the supplied config string, with additional custom handling of import statements.
@@ -53,6 +54,7 @@ function process(str, loader, options) {
         try {
             config = parser(str, options);
             Promise.all(imports)
+                .then(() => configObject.commit(config))
                 .then(() => resolve(config))
                 .catch(reject);
         } catch (ex) {
@@ -63,6 +65,7 @@ function process(str, loader, options) {
     function handleCustomExpression(block) {
         var imported, location;
         if (block.type === 'CallExpression' && block.callee.name === options.name) {
+            /* istanbul ignore else */
             if (block.arguments[0] && block.arguments[0].type === 'Literal') {
                 location = block.arguments[0].value;
                 doImport(block.arguments[0].value);

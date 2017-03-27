@@ -161,7 +161,9 @@ function attach(obj, name, expression, options) {
 
     options = options || {};
     getter = createExpressionGetter(expression);
-    setter = createExpressionSetter(getter);
+    if (!options.readOnly) {
+        setter = createExpressionSetter(getter);
+    }
     if (typeof name !== 'symbol' && Array.isArray(obj) && Number.isInteger(parseFloat(name))) {
         obj[name] = {
             get: getter,

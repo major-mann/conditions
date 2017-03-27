@@ -139,6 +139,11 @@ describe('Change tracker', function () {
         it('should return false if the supplied object is not a tracked object', function () {
             expect(tracker.reset({})).to.equal(false);
         });
+        it('should handle circular references', function () {
+            tracked.circ = tracked;
+            tracker.commit(tracked);
+            expect(tracker.reset(tracked)).to.equal(true);
+        });
         it('should revert at a descriptor level', function () {
             // Note: We do this first set and define property
             //  for coverage reasons

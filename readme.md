@@ -236,27 +236,19 @@ The following commands may be issues:
     (See above) property is used to determine which element to replace.
 * **clear** - Removed all items from the array.
 
+# Features for V2
+* Resource saver
+
 # Roadmap to V1.0.0
 
-* Get 100% coverage
 * Adding travis CI and codecov.io support.
 * Switch to eslint
 * Highly complex sample config
 * Node acceptance testing
 * Loader must throw an error on duplicate ids (But not levels)
 * Deal with unhandled promise rejection....
-* Unwrap all modules from global closure (No longer needed as not targeting browser).
-* Investigate removal of template literal custom parsing function in favour of straight to parseExpression...
-* Change file loader to be extendable and to accept object arguments (which will not be loaded, but used
-    directly in the extension chain)
-* Make sure all major config producting functions (parser, levels, loader) commit changes to resulting objects before returning.
 * Add mocking component for resource loader, loader, levels, parser?
-* Resource saver? Really not convinced of this for v1... No easy way to do this (with expressions?!? ... Maybe on override they just get permanently overriden?) Save an overwrite config level!?! Definitely V2
-* Empty config file should return empty object
 * MAKE SURE ALL TESTS USE COMMON MOCKS
-* Remove file-loader in favour of resource loader
-* Option to allow / dissallow expression overrides
 * Fix eslint configs
-* expression.spec.js...
 * Could we have object commands?
     * Thinking an extend command which can take 2 references and combine for the result?

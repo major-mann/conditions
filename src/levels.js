@@ -41,7 +41,7 @@ function load(config, levels, options) {
             res = processLevel(res, levels[i], cache);
         }
     }
-
+    configObject.commit(res);
     return res;
 
     function processLevel(base, extend, cache) {

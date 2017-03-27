@@ -17,8 +17,8 @@ describe('configuration parser', function () {
             expect(parse.bind(null, function () { })).to.throw(/must.*string/i);
             expect(parse.bind(null, 123)).to.throw(/must.*string/i);
         });
-        it('should return null when the supplied str is empty', function() {
-            expect(parse('')).to.equal(null);
+        it('should return an empty object when the supplied str is empty', function() {
+            expect(parse('')).to.be.an('object');
         });
         it('should ensure the supplied config file defines an object or array at its root', function () {
             expect(parse.bind(null, data('invalid'))).to.throw(/object.*array/i);

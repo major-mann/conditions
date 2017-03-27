@@ -34,9 +34,14 @@ function commit(obj, cache) {
     }
 }
 
-function reset(obj) {
+function reset(obj, cache) {
     if (obj && obj[RESET]) {
-        obj[RESET]();
+        cache = cache || new WeakMap();
+        if (cache.has(obj)) {
+            return cache.get(obj);
+        }
+        cache.set(obj, true);
+        obj[RESET](cache);
         return true;
     } else {
         return false;
@@ -117,11 +122,11 @@ function tracker(obj, options) {
         }
     }
 
-    function reset() {
+    function reset(cache) {
         Object.keys(inserts).forEach(k => delete obj[k]);
         Object.keys(deletes).forEach(k => Object.defineProperty(obj, k, deletes[k]));
         Object.keys(updates).forEach(revertUpdate);
-        Object.keys(obj).forEach(k => module.exports.reset(obj[k]));
+        Object.keys(obj).forEach(processKey);
         commit();
 
         function revertUpdate(name) {
@@ -133,13 +138,29 @@ function tracker(obj, options) {
             }
             Object.defineProperty(obj, name, updates[name]);
         }
+
+        function processKey(k) {
+            try {
+                module.exports.reset(obj[k], cache);
+            } catch (ex) {
+                // Do nothing
+            }
+        }
     }
 
     function commit(cache) {
         inserts = {};
         updates = {};
         deletes = {};
-        Object.keys(obj).forEach(k => module.exports.commit(obj[k], cache));
+        Object.keys(obj).forEach(processKey);
+
+        function processKey(k) {
+            try {
+                module.exports.commit(obj[k], cache);
+            } catch (ex) {
+                // Do nothing
+            }
+        }
     }
 
     function set(obj, name, value) {

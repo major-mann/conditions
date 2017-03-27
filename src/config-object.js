@@ -11,18 +11,21 @@ const CONFIG_OBJECT = Symbol('config-object'),
         protectStructure: false
     };
 
-// Expose the public API
-module.exports = create;
-module.exports.is = isConfigObject;
-module.exports.context = context;
-module.exports.events = events;
-module.exports.CHANGE = CHANGE;
-
 // Dependencies
 const EventEmitter = require('events'),
     contextManager = require('./context-manager.js'),
     changeTracker = require('./change-tracker.js'),
     expression = require('./expression.js');
+
+// Expose the public API
+module.exports = create;
+module.exports.is = isConfigObject;
+module.exports.context = context;
+module.exports.events = events;
+module.exports.commit = changeTracker.commit;
+module.exports.reset = changeTracker.reset;
+module.exports.changes = changeTracker.changes;
+module.exports.CHANGE = CHANGE;
 
 function create(obj, options, cache) {
     var res, i, events, preventCircularEvent = {};
