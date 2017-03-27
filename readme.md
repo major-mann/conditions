@@ -238,17 +238,20 @@ The following commands may be issues:
 
 # Features for V2
 * Resource saver
+* Object commands (Things like combining to references)
 
 # Roadmap to V1.0.0
 
-* Adding travis CI and codecov.io support.
-* Switch to eslint
-* Highly complex sample config
-* Node acceptance testing
-* Loader must throw an error on duplicate ids (But not levels)
-* Deal with unhandled promise rejection....
-* Add mocking component for resource loader, loader, levels, parser?
-* MAKE SURE ALL TESTS USE COMMON MOCKS
-* Fix eslint configs
-* Could we have object commands?
-    * Thinking an extend command which can take 2 references and combine for the result?
+* Work
+    * resource-loader mock (should be available directly through index.js)
+    * Complete ESLint configs
+    * examples
+    * documentation
+* Systems
+    * travis CI
+    * codecov.io
+* Tests
+    * Highly complex sample config
+    * Node acceptance testing
+    * Loader must throw an error on duplicate ids (But not levels)
+    * Deal with unhandled promise rejection....
