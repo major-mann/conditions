@@ -19,7 +19,8 @@ const EMPTY = Object.freeze({}),
 // Dependencies
 const expression = require('./expression.js'),
     doubleCache = require('./double-cache.js'),
-    configObject = require('./config-object.js');
+    configObject = require('./config-object.js'),
+    contextManager = require('./context-manager.js');
 
 /**
  * Applies the extension arguments to the config. This creates a completely new object
@@ -30,11 +31,18 @@ const expression = require('./expression.js'),
  * @param {object} options The options to apply when extending config.
  *      * {boolean} readOnly - Whether all properties will be set to readOnly
  *      * {boolean} protectStructure - Whether to make properties non-configurable
+ *      * {object} contextManager - The manager to override with and provide context
  */
 function load(config, levels, options) {
-    var i, cache, res = config;
+    var i, cache, res = config, cman;
 
+    // Get the context info to use when creating config objects
     options = Object.assign({}, OPTIONS, options);
+
+    if (options.contextManager) {
+        cman = options.contextManager;
+    }
+
     cache = doubleCache();
     if (Array.isArray(levels)) {
         for (i = 0; i < levels.length; i++) {
@@ -44,11 +52,9 @@ function load(config, levels, options) {
     configObject.commit(res);
     return res;
 
+
     function processLevel(base, extend, cache) {
-        var i, res, cman;
-        /* if (!extend || typeof extend !== 'object') {
-            return extend;
-        }*/
+        var i, res;
         if (cache.has(base, extend)) {
             return cache.get(base, extend);
         }
@@ -64,16 +70,19 @@ function load(config, levels, options) {
             }
             return res;
         } else if (isObj(extend)) {
+            // TODO: Extending from empty makes us lose locals... really need to
             return processLevel(EMPTY, extend, cache);
         } else {
             return extend;
         }
 
         function objectExtend(base, extend) {
-            var res = createConfigObject({}, base, extend);
+            const res = createConfigObject({}, base, extend);
             cache.set(base, extend, res);
+
             Object.keys(base).forEach(processKey);
             Object.keys(extend).forEach(processKey);
+
             return res;
 
             function processKey(k) {
@@ -91,10 +100,29 @@ function load(config, levels, options) {
                         // By setting this here, the name does not appear in the keys,
                         //  and any attempt to access the value returns undefined.
                         Object.getPrototypeOf(res)[k] = undefined;
-                        return;
                     } else {
-                        res[k] = processLevel(base[k], extend[k], cache);
+                        if (k === 'options') {
+                            debugger;
+                        }
+                        // TODO: How to handle base throwing an exception?
+                        //  TODO: Base shouldn't be?? Would expect extension perhaps...
+                        try {
+                            var tmpBaseVal = base[k];
+                        } catch (ex) {
+                            debugger;
+                            // TODO: Remove this try catch... for debugging.
+                        }
+                        const baseVal = base[k];
+                        const extendVal = extend[k];
+                        res[k] = processLevel(baseVal, extendVal, cache);
                     }
+                    /* } else if (!expression.is(base, k)) {
+                        // TODO: This is an issue... An import is an expression... and then we cannot override...
+                        //  If the
+                        res[k] = processLevel(base[k], extend[k], cache);
+                    } else {
+                        res[k] = processLevel(EMPTY, extend[k], cache);
+                    }*/
                 } else { // base has the property
                     if (expression.is(base, k)) {
                         expression.copy(base, k, res, k);
@@ -224,24 +252,18 @@ function load(config, levels, options) {
         }
 
         function createConfigObject(type, base, extend, opts) {
-            var env, bcman, ecman, res;
-            //  We need an environment that is a combination of extend
-            //      overriding base...
-            bcman = configObject.context(base);
-            ecman = configObject.context(extend);
-            env = Object.assign(
-                bcman && bcman.environment() || {},
-                ecman && ecman.environment() || {},
-                options.environment || {}
-            );
+            // TODO: When creating without cman, surely we want to pass env and locals from base (if it exists)?
             opts = Object.assign({
                 readOnly: options.readOnly,
                 protectStructure: options.protectStructure,
-                environment: env,
-                context: options.context,
+                environment: cman && cman.environment() || {},
+                locals: cman && cman.locals() || {},
+                context: options.context || cman && cman.name(),
+                // TODO: Remove this once tested..
+                // contextManager: cman || options.contextManager
                 contextManager: cman
             }, opts);
-            res = configObject(type, opts);
+            const res = configObject(type, opts);
 
             // Set the prototype to base so extended expressions can
             //  use the base keyword.

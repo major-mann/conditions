@@ -1,5 +1,5 @@
 # Conditions
-Quick note: This is not yet published on NPM or bower, I am planning on doing so soon.
+[TODO] This document needs an overhaul
 
 ## Quick start
 A convenience loader is supplied which allows `FS` and `HTTP` loading in node, and `HTTP` loading in
@@ -244,6 +244,13 @@ The following commands may be issues:
 
 * Work
     * resource-loader mock (should be available directly through index.js)
+    * Change import function to be able to accept multiple arguments, and also expressions
+        referencing existing objects to be combined with the loaded contents
+    * Ensure config file and locations are reported on syntax errors.
+    * Allow import to specify a directory
+        * Looks for index.config and Loads
+            * If we have an array, we pass that array to the standard import.
+        * Otherwise we set the import to undefined
     * Complete ESLint configs
     * examples
     * documentation

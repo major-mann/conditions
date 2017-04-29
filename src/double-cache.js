@@ -1,5 +1,11 @@
 'use strict';
 
+const UNDEFINED = Symbol(String(undefined)),
+    NULL = Symbol(String(null)),
+    FALSE = Symbol(String(false)),
+    TRUE = Symbol(String(true)),
+    NUMBER = {};
+
 /** Creates a double weakmap cache */
 module.exports = function createDoubleCache() {
     const objectLookup = new WeakMap(),
@@ -83,6 +89,18 @@ module.exports = function createDoubleCache() {
                 symbolLookup[sym] = value;
                 return sym;
             }
+        } else if (Number.isFinite(value)) {
+            const sym = NUMBER[String(value)];
+            NUMBER[String(value)] = sym;
+            return sym;
+        } else if (value === undefined) {
+            return UNDEFINED;
+        } else if (value === null) {
+            return NULL;
+        } else if (value === false) {
+            return FALSE;
+        } else if (value === true) {
+            return TRUE;
         } else {
             return value;
         }

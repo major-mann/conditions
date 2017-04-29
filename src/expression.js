@@ -11,9 +11,6 @@ const EXPRESSION = Symbol('expression'),
     DEPENDENCIES = Symbol('dependencies'),
     DEFAULT_BASE_NAME = 'base';
 
-// Dependencies
-const configObject = require('./config-object.js');
-
 // Expose the public API
 module.exports.clone = clone;
 module.exports.clearOverride = clearOverride;
@@ -29,7 +26,7 @@ module.exports.BASE_NAME = DEFAULT_BASE_NAME;
 // Note: This is quite the hack. Make it so we always return
 //  false for isExpression. Then when the array getter checks,
 //  it will return the underlying expression object... disgusting :O
-var noExpressions;
+var noExpressions, configObject;
 
 function prepareExpression(expression, dependencies, custom) {
     if (custom) {
@@ -112,8 +109,7 @@ function createExpressionGetter(expression) {
 }
 
 function createExpressionSetter(get) {
-    return set;
-    function set(value) {
+    return function set(value) {
         get[OVERRIDE] = value;
     }
 }
@@ -197,6 +193,13 @@ function attach(obj, name, expression, options) {
 */
 function context(property, name, nothrow) {
     var proto, context, value;
+
+    // We want this function as part of expression, but expression
+    //  is referenced from configObject, so we lazy load
+    if (!configObject) {
+        configObject  = require('./config-object.js');
+    }
+
     context = configObject.context(this);
     // If prototype is prefered check the entire chain for the property
     if (this.hasOwnProperty(name)) { // Otherwise just the object

@@ -25,6 +25,9 @@ function createContextManager(source, name, env, locals) {
     if (!locals || typeof locals !== 'object') {
         locals = {};
     }
+    if (typeof name !== 'string') {
+        throw new Error(`name MUST be a string. Got ${name && typeof name}`);
+    }
     var res = {};
     res.source = () => source;
     res.name = () => name;
@@ -35,6 +38,7 @@ function createContextManager(source, name, env, locals) {
     res.value = value;
     res.localValue = localValue;
 
+    res.registered = registered;
     res.register = register;
     res.deregister = deregister;
     res.update = update;
@@ -61,6 +65,10 @@ function createContextManager(source, name, env, locals) {
         if (locals.hasOwnProperty(name)) {
             return locals[name];
         }
+    }
+
+    function registered(obj) {
+        return obj[ID] && locals[obj[ID]] === obj;
     }
 
     /** Performs object registration */
@@ -101,8 +109,12 @@ function createContextManager(source, name, env, locals) {
             }
             cache.set(obj, true);
             Object.keys(obj).forEach(k => deregisterObj(obj[k], cache));
-            if (obj[ID]) {
-                delete locals[obj[ID]];
+            if (obj[ID] && locals[obj[ID]]) {
+                if (locals[obj[ID]] === obj) {
+                    delete locals[obj[ID]];
+                } else {
+                    throw new Error(`Attempt to deregister "${obj[ID]}" from incorrect object!`);
+                }
             }
         }
     }

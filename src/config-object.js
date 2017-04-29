@@ -30,13 +30,14 @@ module.exports.CHANGE = CHANGE;
 function create(obj, options, cache) {
     var res, i, events, preventCircularEvent = {};
     res = obj;
-    if (!isConfigObject(obj) && obj && typeof obj === 'object') {
+    if (/*!isConfigObject(obj) &&*/obj && typeof obj === 'object') {
         cache = cache || new WeakMap();
         if (cache.has(obj)) {
             return cache.get(obj);
         }
         events = {};
         options = Object.assign({}, OPTIONS, options);
+
         res = initialize(obj, options);
         if (!res || !res[CONFIG_OBJECT]) {
             // If we have something like date or regexp
@@ -46,9 +47,7 @@ function create(obj, options, cache) {
         res = changeTracker(res, {
             customRevert: expression.clearOverride
         });
-
-        // Register the proxy in the context, and throw on duplicate
-        res[CONTEXT].register(res, true);
+        res[CONTEXT].register(res, false);
 
         // Caches the result to handle circular refs
         cache.set(obj, res);
@@ -63,12 +62,21 @@ function create(obj, options, cache) {
 
         // Add the child change events
         Object.keys(res)
+            .map(k => undefinedOnError(res, k))
             .filter(k => isConfigObject(res[k]))
             .forEach(k => addChildChangeEvent(res, k, res[k]));
 
         changeTracker.commit(res);
     }
     return res;
+
+    function undefinedOnError(obj, name) {
+        try {
+            return obj[name];
+        } catch (ex) {
+            return undefined;
+        }
+    }
 
     function addChildChangeEvent(obj, key, value) {
         if (typeof key === 'string') {
@@ -103,6 +111,8 @@ function create(obj, options, cache) {
             } else {
                 // This will only handle the event, not emit any other event
                 //  in regards to this property
+                // TODO: This seems to get tied up a lot... we are hitting maxListeners
+                // TODO: This is because we are duplicating the source...
                 rootEvents.on(REF_CHANGE, onSubRefChange);
             }
         }
@@ -192,14 +202,18 @@ function create(obj, options, cache) {
                 // Return true without doing anything
                 return true;
             }
-            old = obj[name];
+            if (hasOld) {
+                old = obj[name];
+            }
             if (!hasOld || old !== value) {
                 if (events[name]) {
                     obj[EVENTS].removeListener(CHANGE, events[name]);
                     delete events[name];
                 }
 
-                deregister(obj, name);
+                if (hasOld) {
+                    deregister(obj, name);
+                }
 
                 // Check we have an object or array that is not a Date or RegExp.
                 standard = standardObject(value);
@@ -264,14 +278,15 @@ function create(obj, options, cache) {
             }
 
             // Ensure we deregister on replacement
-            old = obj[name];
             hasOld = obj.hasOwnProperty(name);
+            if (hasOld) {
+                old = obj[name];
+            }
 
-            // TODO: Think this block can be made common
             if (name === contextManager.ID) {
                 obj[CONTEXT].deregister(obj);
-            } else {
-                obj[CONTEXT].deregister(obj[name]);
+            } else if (hasOld) {
+                obj[CONTEXT].deregister(old);
             }
 
             if (descriptor.hasOwnProperty('get')) {
@@ -380,14 +395,11 @@ function initialize(obj, options) {
         return res;
     } else {
         res = {};
-        if (obj[contextManager.ID]) {
-            res[contextManager.ID] = obj[contextManager.ID];
-        }
     }
     if (options.contextManager) {
         cman = options.contextManager;
     } else {
-        cman = contextManager(res, options.context || {}, options.environment || {});
+        cman = contextManager(res, options.context || '', options.environment || {}, options.locals);
     }
 
     Object.defineProperty(res, CONTEXT, {

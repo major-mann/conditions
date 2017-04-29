@@ -8,8 +8,10 @@ const OVERRIDE_ORDER = ['protocol', 'host', 'pathname', 'search', 'hash'];
 
 // Dependencies
 const request = require('request'),
+    configObject = require('./config-object.js'),
     loader = require('./loader.js'),
     levels = require('./levels.js'),
+    path = require('path'),
     url = require('url'),
     fs = require('fs');
 
@@ -25,41 +27,75 @@ module.exports.loaders = {
  * Loads a config file, or series of config files (config levels).
  * @param {array} location An array of loader string paths, or objects to inject.
  * @param {object} options The last argument is the options to pass to parser, loader and levels.
+ *          {function} customLoader The loader to pass that will be used to load import data.
+ *          TODO: Parser options
+ *          TODO: Levels options
+ *          TODO: Protocol loader options§
+ *          TODO: Loader options
  */
 function load(location, options) {
-    var base;
+    var base = { protocol: 'file:' };
     options = options || {};
-    return Promise.all(location.map(processLocation))
+
+    // Explode the locations to include the level files.
+    if (Array.isArray(options.levels) && options.levels.every(l => typeof l === 'string')) {
+        const newLocation = location.map(loc => processLevel(loc, options.levels));
+        location = newLocation[0].concat.apply(newLocation[0], newLocation.slice(1));
+    }
+    return Promise.all(location.map(l => processLocation(l, true)))
         .then(processLevels);
+
+    function processLevel(value, levels) {
+        const uri = url.parse(value);
+        const directory = path.dirname(uri.pathname);
+        const ext = path.extname(uri.pathname);
+        const fileName = path.basename(uri.pathname, ext);
+
+        return levels.map(function processLevel(level) {
+            var newFileName;
+            if (level) {
+                newFileName = path.join(directory, `${fileName}.${level}${ext}`);
+            } else {
+                newFileName = path.join(directory, `${fileName}${ext}`);
+            }
+            uri.pathname = newFileName;
+            return url.format(uri);
+        });
+    }
 
     function processLevels(lvls) {
         while (!lvls[0] && lvls.length) {
             lvls.shift();
         }
         if (lvls.length) {
-            return levels(lvls[0], lvls.slice(1), options);
+            const opts = Object.assign({}, options);
+            if (!opts.contextManager) {
+                opts.contextManager = configObject.context(lvls[0]);
+            }
+            return levels(lvls[0], lvls.slice(1), opts);
         } else {
             throw new Error(`No valid config levels able to be loaded!`);
         }
     }
 
     /** Processes an individual location */
-    function processLocation(location) {
-        var loaderName, protocolLoader;
+    function processLocation(location, processLoadedData) {
+        var loaderName, protocolLoader, parsed, protocol;
         if (!location) {
             return;
         } else if (typeof location === 'object') {
+            // TODO: Make sure we have a config object?
             return location;
         } else if (typeof location !== 'string') {
             return;
         }
 
         // Setup the path we will need.
-        base = setOverrides(base, url.parse(location));
+        parsed = url.parse(location);
+        protocol = parsed.protocol || base.protocol;
+        loaderName = protocol && protocol.substr(0, protocol.length - 1);
 
         // Get the loader.
-        loaderName = base.protocol;
-        loaderName = loaderName && loaderName.substr(0, loaderName.length - 1);
         if (!loaderName) {
             throw new Error('No initial protocol has been set! You MUST set the first location with an absolute URI');
         }
@@ -68,9 +104,14 @@ function load(location, options) {
         }
         protocolLoader = load.loaders[loaderName];
 
-        return protocolLoader(Object.assign({}, base), options)
-            .then(txt => processData(formatLocation(base), txt))
-            .catch(onError);
+        base = setOverrides(base, parsed, protocolLoader.override);
+        var res = protocolLoader(Object.assign({}, base), options);
+        if (processLoadedData) {
+            const formatted = formatLocation(base);
+            res = res.then(txt => processData(formatted, txt));
+        }
+        res = res.catch(onError);
+        return res;
 
         function processData(location, configData) {
             var opts, ldr = defaultLoader;
@@ -82,7 +123,9 @@ function load(location, options) {
 
             /** The loader for imports */
             function defaultLoader(location) {
-                return processLocation(location);
+                // Process the location as usual, but don't process the loaded data
+                //  This is since the loader expects text, not the created object
+                return processLocation(location, false);
             }
         }
 
@@ -101,7 +144,7 @@ function load(location, options) {
     }
 }
 
-function setOverrides(current, updated) {
+function setOverrides(current, updated, protocolOverride) {
     var name, override = {}, copying = false;
     // Everything less than max....
     for (var i = 0; i < OVERRIDE_ORDER.length; i++) {
@@ -110,7 +153,11 @@ function setOverrides(current, updated) {
             copying = true;
         }
         if (copying) {
-            override[name] = updated[name];
+            if (protocolOverride && typeof protocolOverride[name] === 'function') {
+                override[name] = protocolOverride[name](current, updated);
+            } else {
+                override[name] = updated[name];
+            }
         }
     }
     return Object.assign({}, current, override);
@@ -142,6 +189,25 @@ fsLoad.format = function format(base) {
     delete base.path;
     delete base.href;
     return url.format(base);
+};
+fsLoad.override = {
+    pathname: function joinPath(base, updated) {
+        var bpath, upath, bext, uext;
+        upath = updated.pathname;
+        if (path.isAbsolute(upath)) {
+            return upath;
+        }
+        bpath = base.pathname;
+        if (bpath) {
+            bext = path.extname(bpath);
+            if (bext) {
+                bpath = path.dirname(bpath, bext);
+            }
+            return path.join(bpath, upath);
+        } else {
+            throw new Error(`Received relative path "${upath}" without absolute base path!`);
+        }
+    }
 };
 
 function httpLoad(location) {
