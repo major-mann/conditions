@@ -244,10 +244,9 @@ The following commands may be issues:
 
 * Work
     * resource-loader mock (should be available directly through index.js)
-    * Change import function to be able to accept multiple arguments, and also expressions
-        referencing existing objects to be combined with the loaded contents
     * Ensure config file and locations are reported on syntax errors.
-    * Allow import to specify a directory
+    * Test level loading (and make it more flexible in terms of supplied values?)
+    * Allow import to specify a directory (rather a new import function... $importFrom?)
         * Looks for index.config and Loads
             * If we have an array, we pass that array to the standard import.
         * Otherwise we set the import to undefined

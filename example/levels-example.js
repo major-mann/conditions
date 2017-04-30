@@ -4,7 +4,7 @@ const src = require('../src'),
 
 (function doLoad() {
     debugger;
-    src([path.join(__dirname, 'load-example/main.config'), 'main.development.config'], { })
+    src([path.join(__dirname, 'levels-example/app.config')], { levels: ['common', 'prod', 'dev'] })
         .then(config => {
             debugger;
             console.log(JSON.stringify(config, null, 4));

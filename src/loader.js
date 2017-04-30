@@ -9,6 +9,7 @@ module.exports = process;
 
 const OPTIONS_DEFAULT = {
         name: '$import',
+        from: '$importFrom',
         source: true,
         locals: true
     };
@@ -16,6 +17,7 @@ const OPTIONS_DEFAULT = {
 // Dependencies
 const escodegen = require('escodegen'),
     uuid = require('uuid'),
+    utils = require('./utils'),
     parser = require('./parser.js'),
     levels = require('./levels.js'),
     configObject = require('./config-object.js');
@@ -31,6 +33,8 @@ const escodegen = require('escodegen'),
  *  before being assigned.
  * @param {object} options The options for the loader. This can contain the following:
  *      * {string} name The name of the import function. Defaults to "$import"
+ *      * {string} from The name of the imortFrom function. Defaults to $importFrom
+ *      * {array} levels The levels to apply to filenames before loading
  *      * {object} environment - The environment variables to pass to the parser.
  *      * {boolean} protectStructure - Ensures all properties are non configurable.
  *      * {boolean} readOnly - Ensures all created properties are read only. Note: This will
@@ -88,7 +92,7 @@ function process(str, loader, options) {
                 if (type === 'CallExpression') {
                     const name = block[key].callee.name;
                     if (name === options.name) {
-                        const id = `custom${uuid.v4().replace(/-/g, '')}`;
+                        const id = `customImport${uuid.v4().replace(/-/g, '')}`;
                         block[key].callee.name = id;
                         importCache[id] = undefined;
                     }
@@ -121,7 +125,7 @@ function process(str, loader, options) {
 
         /** Searches recursively for import calls to process. */
         function processBlock(block) {
-            var name;
+            var name, handler, func;
             if (block.type === 'CallExpression') {
                 name = block.callee.arguments[2] && block.callee.arguments[2].value;
                 if (importCache.hasOwnProperty(name)) {
@@ -136,10 +140,7 @@ function process(str, loader, options) {
                             arguments: block.arguments
                         }
                     });
-                    const func = new Function(['context', '$import'], body);
-                    const call = () => {
-                        return func.call(object, context, doImport).then(res => importCache[name] = res);
-                    }
+                    func = new Function(['context', '$import'], body);
                     localImports.push(() => importCache[name] = call());
                 }
             }
@@ -147,15 +148,22 @@ function process(str, loader, options) {
                 Object.keys(block).forEach(processBlock);
             }
 
+            function call() {
+                return func.call(object, context, doImport)
+                    .then(res => importCache[name] = res);
+            }
+
             function doImport() {
-                debugger;
-                const locations = Array.prototype.slice.call(arguments);
+                var locations = Array.prototype.slice.call(arguments);
+                if (Array.isArray(options.levels) && options.levels.every(l => typeof l === 'string')) {
+                    locations = utils.explodeLevels(locations, options.levels);
+                }
                 return Promise.all(locations.map(processLocation))
                     .then(combine);
 
                 function combine(parts) {
+                    parts = parts.filter(p => p !== undefined); // Clear any that could not be loaded
                     if (parts.length) {
-                        // TODO: We need to pass context manager!!!
                         const opts = Object.assign({}, options);
                         if (!opts.contextManager) {
                             opts.contextManager = configObject.context(config);
@@ -171,31 +179,17 @@ function process(str, loader, options) {
                     if (typeof location === 'string') {
                         return processLoaderLocation(location);
                     } else {
-                        // TODO: Shouldn't we convert to config object?... Will be done on the set...? No, since it's a
-                        //  custom getter... Or perhaps we should not use that anymore? We couldn't control the context
-                        //  then? (Or does set use the same context when setting... can't recall)
                         return location;
                     }
                 }
 
                 function processLoaderLocation(location) {
                     var prom = loader(location);
-                    if (prom instanceof Promise) {
-                        prom = prom.then(data => processLoaderResult(location, data));
-                    } else {
-                        // Note: We need to be in next tick to process since we need a
-                        //  copy of the context manager when processing and for that we need the
-                        //  current execution stack to complete
-                        prom = oneTick().then(() => processLoaderResult(location, prom));
+                    if (prom instanceof Promise !== true) {
+                        prom = Promise.resolve().then(() => prom);
                     }
                     imports.push(prom);
                     return prom;
-                }
-
-                function oneTick() {
-                    return new Promise(function (resolve) {
-                        resolve();
-                    });
                 }
 
                 /**
@@ -208,11 +202,10 @@ function process(str, loader, options) {
                     const opts = {
                         environment: options.environment,
                         readOnly: options.readOnly,
+                        levels: options.levels,
                         protectStructure: options.protectStructure,
                         post: postProcessExpression,
-                        context: location,
-                        // TODO: Remove this once tested....
-                        // contextManager: configObject.context(config)
+                        context: location
                     };
                     return process(data, loader, opts);
                 }

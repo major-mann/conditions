@@ -169,8 +169,6 @@ function parse(str, options) {
         function mapVal(block, index) {
             var set, parsed = parseBlock(arr, block, index);
             if (typeof parsed === 'function') {
-                // TODO: We need a way to fetch the object
-                //  we are setting here without the getter?
                 expression.attach(arr, arr.length, parsed, options);
             } else {
                 arr.push(parsed);
@@ -726,7 +724,6 @@ function parse(str, options) {
 
     /** Called to perform custom processing of a block. */
     function customProcess(block, contextManager, result, property) {
-        // TODO: Need the property path....
         if (options.custom && typeof options.custom === 'function') {
             return options.custom(block, contextManager, result, property);
         } else {

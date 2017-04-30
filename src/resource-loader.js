@@ -11,6 +11,7 @@ const request = require('request'),
     configObject = require('./config-object.js'),
     loader = require('./loader.js'),
     levels = require('./levels.js'),
+    utils = require('./utils'),
     path = require('path'),
     url = require('url'),
     fs = require('fs');
@@ -27,6 +28,7 @@ module.exports.loaders = {
  * Loads a config file, or series of config files (config levels).
  * @param {array} location An array of loader string paths, or objects to inject.
  * @param {object} options The last argument is the options to pass to parser, loader and levels.
+ *          {boolean} verbose Whether to print out information about why resources could not be loaded.
  *          {function} customLoader The loader to pass that will be used to load import data.
  *          TODO: Parser options
  *          TODO: Levels options
@@ -39,29 +41,10 @@ function load(location, options) {
 
     // Explode the locations to include the level files.
     if (Array.isArray(options.levels) && options.levels.every(l => typeof l === 'string')) {
-        const newLocation = location.map(loc => processLevel(loc, options.levels));
-        location = newLocation[0].concat.apply(newLocation[0], newLocation.slice(1));
+        location = utils.explodeLevels(location, options.levels);
     }
-    return Promise.all(location.map(l => processLocation(l, true)))
+    return Promise.all(location.map(l => processLocation(base, l, true)))
         .then(processLevels);
-
-    function processLevel(value, levels) {
-        const uri = url.parse(value);
-        const directory = path.dirname(uri.pathname);
-        const ext = path.extname(uri.pathname);
-        const fileName = path.basename(uri.pathname, ext);
-
-        return levels.map(function processLevel(level) {
-            var newFileName;
-            if (level) {
-                newFileName = path.join(directory, `${fileName}.${level}${ext}`);
-            } else {
-                newFileName = path.join(directory, `${fileName}${ext}`);
-            }
-            uri.pathname = newFileName;
-            return url.format(uri);
-        });
-    }
 
     function processLevels(lvls) {
         while (!lvls[0] && lvls.length) {
@@ -79,12 +62,11 @@ function load(location, options) {
     }
 
     /** Processes an individual location */
-    function processLocation(location, processLoadedData) {
+    function processLocation(base, location, processLoadedData) {
         var loaderName, protocolLoader, parsed, protocol;
         if (!location) {
             return;
         } else if (typeof location === 'object') {
-            // TODO: Make sure we have a config object?
             return location;
         } else if (typeof location !== 'string') {
             return;
@@ -104,7 +86,7 @@ function load(location, options) {
         }
         protocolLoader = load.loaders[loaderName];
 
-        base = setOverrides(base, parsed, protocolLoader.override);
+        setOverrides(base, parsed, protocolLoader.override);
         var res = protocolLoader(Object.assign({}, base), options);
         if (processLoadedData) {
             const formatted = formatLocation(base);
@@ -119,13 +101,15 @@ function load(location, options) {
                 ldr = options.customLoader;
             }
             opts = Object.assign({}, { context: location }, options);
+            // Problem is passing in the loader here... The in loader,
+            //  we process the result, and reference recursively...
+            // Shouldn't the
             return loader(configData, ldr, opts);
 
-            /** The loader for imports */
+            /** The loader for imports. */
             function defaultLoader(location) {
-                // Process the location as usual, but don't process the loaded data
-                //  This is since the loader expects text, not the created object
-                return processLocation(location, false);
+                const newBase = Object.assign({}, base);
+                return processLocation(newBase, location, true);
             }
         }
 
@@ -138,8 +122,11 @@ function load(location, options) {
         }
 
         function onError(err) {
-            console.warn('Unable to load configuration file from "%s". Skipping', location);
-            console.warn(err);
+            const loc = err.path || location;
+            console.warn('Unable to load configuration file from "%s". Skipping', loc);
+            if (options.verbose) {
+                console.warn(err);
+            }
         }
     }
 }
@@ -160,7 +147,7 @@ function setOverrides(current, updated, protocolOverride) {
             }
         }
     }
-    return Object.assign({}, current, override);
+    Object.assign(current, override);
 }
 
 
@@ -169,6 +156,7 @@ function fsLoad(location) {
         location = fsLoad.format(location);
         fs.readFile(location, { encoding: 'utf8' }, function onComplete(err, data) {
             if (err) {
+                err.path = location;
                 reject(err);
             } else {
                 resolve(data);
@@ -221,6 +209,7 @@ function httpLoad(location) {
                 err = new Error(body);
             }
             if (err) {
+                err.path = req.uri;
                 err.code = res && res.statusCode;
                 reject(err);
             } else {

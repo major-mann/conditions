@@ -70,7 +70,6 @@ function load(config, levels, options) {
             }
             return res;
         } else if (isObj(extend)) {
-            // TODO: Extending from empty makes us lose locals... really need to
             return processLevel(EMPTY, extend, cache);
         } else {
             return extend;
@@ -101,28 +100,10 @@ function load(config, levels, options) {
                         //  and any attempt to access the value returns undefined.
                         Object.getPrototypeOf(res)[k] = undefined;
                     } else {
-                        if (k === 'options') {
-                            debugger;
-                        }
-                        // TODO: How to handle base throwing an exception?
-                        //  TODO: Base shouldn't be?? Would expect extension perhaps...
-                        try {
-                            var tmpBaseVal = base[k];
-                        } catch (ex) {
-                            debugger;
-                            // TODO: Remove this try catch... for debugging.
-                        }
                         const baseVal = base[k];
                         const extendVal = extend[k];
                         res[k] = processLevel(baseVal, extendVal, cache);
                     }
-                    /* } else if (!expression.is(base, k)) {
-                        // TODO: This is an issue... An import is an expression... and then we cannot override...
-                        //  If the
-                        res[k] = processLevel(base[k], extend[k], cache);
-                    } else {
-                        res[k] = processLevel(EMPTY, extend[k], cache);
-                    }*/
                 } else { // base has the property
                     if (expression.is(base, k)) {
                         expression.copy(base, k, res, k);
@@ -252,15 +233,12 @@ function load(config, levels, options) {
         }
 
         function createConfigObject(type, base, extend, opts) {
-            // TODO: When creating without cman, surely we want to pass env and locals from base (if it exists)?
             opts = Object.assign({
                 readOnly: options.readOnly,
                 protectStructure: options.protectStructure,
                 environment: cman && cman.environment() || {},
                 locals: cman && cman.locals() || {},
                 context: options.context || cman && cman.name(),
-                // TODO: Remove this once tested..
-                // contextManager: cman || options.contextManager
                 contextManager: cman
             }, opts);
             const res = configObject(type, opts);

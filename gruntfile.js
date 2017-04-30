@@ -1,8 +1,6 @@
 module.exports = function(grunt) {
     'use strict';
 
-    // TODO: Need to add a babel step to go from ES6 to ES5 before uglify.
-
     grunt.initConfig({
         jshint: {
             src: ['src/**/*.js'],

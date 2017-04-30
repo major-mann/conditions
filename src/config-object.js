@@ -111,8 +111,6 @@ function create(obj, options, cache) {
             } else {
                 // This will only handle the event, not emit any other event
                 //  in regards to this property
-                // TODO: This seems to get tied up a lot... we are hitting maxListeners
-                // TODO: This is because we are duplicating the source...
                 rootEvents.on(REF_CHANGE, onSubRefChange);
             }
         }
