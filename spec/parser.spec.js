@@ -144,7 +144,6 @@ describe('configuration parser', function () {
             expect(val.hello.world[0]).to.equal(1);
             val.hello.world[0] = 'testing';
             expect(val.hello.world[0]).to.equal('testing');
-
             expect(val.hello.world[1]).to.equal(2);
             val.hello.world[1] = 'testing';
             expect(val.hello.world[1]).to.equal('testing');
@@ -181,6 +180,17 @@ describe('configuration parser', function () {
             expect(val.hello.world[0]).to.equal(1);
             expect(val.hello.world[1]).to.equal(5);
             expect(val.hello.world[2]).to.equal(3);
+        });
+        it('should allow options.custom to return a function which will become the expression', function () {
+            const text = 'foo bar baz';
+            const options = {
+                environment: env,
+                custom: function () {
+                    return () => text;
+                }
+            }
+            const val = parse('{ foo: bar + baz }', options);
+            expect(val.foo).to.equal(text);
         });
     });
 

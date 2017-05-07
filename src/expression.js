@@ -13,6 +13,7 @@ const EXPRESSION = Symbol('expression'),
 
 // Expose the public API
 module.exports.clone = clone;
+module.exports.cloneArrayExpression = cloneArrayExpression;
 module.exports.clearOverride = clearOverride;
 module.exports.copy = copy;
 module.exports.attach = attach;
@@ -41,6 +42,12 @@ function isExpression(obj, name) {
     var desc;
     if (noExpressions) {
         return false;
+    } else if (name === undefined) {
+        if (typeof obj.get === 'function') {
+            return Boolean(obj && obj.get && obj.get[EXPRESSION]);
+        } else {
+            return Boolean(obj && obj[EXPRESSION] === true);
+        }
     } else if (Array.isArray(obj)) {
         noExpressions = true;
         try {
@@ -83,12 +90,31 @@ function clone(expressionGet) {
     }
 }
 
+function cloneArrayExpression(arr, index) {
+    noExpressions = true;
+    if (arr && arr[index] && typeof arr[index].get === 'function' && typeof arr[index].get[EXPRESSION] === 'function') {
+        const get = createExpressionGetter(arr[index].get[EXPRESSION]);
+        const set = createExpressionSetter(get);
+        noExpressions = false;
+        const res = {
+            get,
+            set
+        };
+        res[EXPRESSION] = true;
+        return res;
+    } else {
+        noExpressions = false;
+        throw new Error('Supplied array value does not contain an expression!');
+    }
+}
+
 /**
  * Creates a getter for the given expression. Note: This getter is
  * only good to be used for a single property.
  */
 function createExpressionGetter(expression) {
     get[EXPRESSION] = expression;
+    /* istanbul ignore if */
     if (expression[CUSTOM]) {
         get[CUSTOM] = true;
     }
@@ -161,11 +187,12 @@ function attach(obj, name, expression, options) {
         setter = createExpressionSetter(getter);
     }
     if (typeof name !== 'symbol' && Array.isArray(obj) && Number.isInteger(parseFloat(name))) {
-        obj[name] = {
+        const expObj = {
             get: getter,
             set: setter
         };
-        obj[name][EXPRESSION] = true;
+        expObj[EXPRESSION] = true;
+        obj[name] = expObj;
     } else {
         definition = {
             enumerable: true,

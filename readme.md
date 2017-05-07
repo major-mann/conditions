@@ -244,12 +244,8 @@ The following commands may be issues:
 
 * Work
     * resource-loader mock (should be available directly through index.js)
-    * Ensure config file and locations are reported on syntax errors.
+    * Ensure config file and locations are reported correctly on syntax errors.
     * Test level loading (and make it more flexible in terms of supplied values?)
-    * Allow import to specify a directory (rather a new import function... $importFrom?)
-        * Looks for index.config and Loads
-            * If we have an array, we pass that array to the standard import.
-        * Otherwise we set the import to undefined
     * Complete ESLint configs
     * examples
     * documentation

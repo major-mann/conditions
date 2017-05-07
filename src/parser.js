@@ -59,12 +59,15 @@ const esprima = require('esprima'),
 * @returns {*} The loaded configuration.
 */
 function parse(str, options) {
-    var code, config, cman = options.contextManager;
+    var code, config, cman;
 
     // Ensure the data is valid
     if (typeof str !== 'string') {
         throw new Error(`str MUST be a string. Got ${str && typeof str}`);
     }
+
+    options = options || {};
+    cman = options.contextManager;
 
     // Empty file is assumed to be an object with no properties
     if (str === '') {
@@ -179,6 +182,7 @@ function parse(str, options) {
             if (typeof prop === 'symbol') {
                 return target[prop];
             }
+            /* istanbul ignore if */ // Note: This is here because of a non critical small design issue
             if (expression.is(target, prop)) {
                 return target[prop].get.call(target);
             } else {
@@ -186,6 +190,7 @@ function parse(str, options) {
             }
         }
 
+        /* istanbul ignore next */ // Note: This is here because of a non critical small design issue
         function set(target, prop, value) {
             if (typeof prop === 'symbol') {
                 target[prop] = value;
@@ -561,10 +566,6 @@ function parse(str, options) {
 
         /** Processes a block for potential identifiers. */
         function processBlock(block, chain) {
-            if (typeof block === 'function') {
-                return block;
-            }
-
             // Process chain
             if (CONSTANT_CHAIN.indexOf(block.type) > -1) {
                 chain = chain || [];
@@ -727,7 +728,7 @@ function parse(str, options) {
         if (options.custom && typeof options.custom === 'function') {
             return options.custom(block, contextManager, result, property);
         } else {
-            return false;
+            return block;
         }
     }
 

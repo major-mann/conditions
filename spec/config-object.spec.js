@@ -18,10 +18,6 @@ describe('Config object', function () {
             expect(configObject(true)).to.equal(true);
             expect(configObject(false)).to.equal(false);
         });
-        it('should return the first parameter if it is a config object', function () {
-            var obj = configObject({});
-            expect(configObject(obj)).to.equal(obj);
-        });
         it('should return date directly', function () {
             var dt, res;
             dt = new Date();

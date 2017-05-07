@@ -68,7 +68,7 @@ function createContextManager(source, name, env, locals) {
     }
 
     function registered(obj) {
-        return obj[ID] && locals[obj[ID]] === obj;
+        return Boolean(obj[ID] && locals[obj[ID]] === obj);
     }
 
     /** Performs object registration */

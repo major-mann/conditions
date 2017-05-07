@@ -59,23 +59,6 @@ describe('loader', function () {
                 return loadRes;
             }
         });
-        it('should use the parser to parse any string returned by the loader', function () {
-            var loadRes = { foo: 'bar' },
-                config = '{ foo: "hello", bar: $import("..."), baz: "world", boo: $import("...") }';
-            return loader(config, loaderHandler)
-                .then(function (config) {
-                    expect(config.bar).not.to.equal(loadRes);
-                    expect(config.boo).not.to.equal(loadRes);
-                    expect(config.bar).not.to.equal(config.boo);
-                    expect(config.bar.foo).to.equal('bar');
-                    expect(config.boo.foo).to.equal('bar');
-                });
-
-            function loaderHandler() {
-                return JSON.stringify(loadRes);
-            }
-
-        });
     });
 
     describe('options', function () {

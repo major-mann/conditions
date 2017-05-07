@@ -42,6 +42,7 @@ function explodeLevels(locations, levels) {
         ext = path.extname(uri.pathname);
         if (levels.includes(ext.substr(1))) {
             const subExt = path.extname(path.basename(uri.pathname), ext);
+            /* istanbul ignore if */
             if (subExt && !levels.includes(subExt.substr(1))) {
                 ext = '';
             }

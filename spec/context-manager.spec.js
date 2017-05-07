@@ -7,12 +7,17 @@ describe('Context manager', function () {
             expect(contextManager).to.be.a('function');
         });
         it('should create locals if an object is not supplied', function () {
-            var cm = contextManager();
+            var cm = contextManager({}, '');
             expect(cm.locals()).to.be.an('object');
         });
         it('should create env if an object is not supplied', function () {
-            var cm = contextManager();
+            var cm = contextManager({}, '');
             expect(cm.environment()).to.be.an('object');
+        });
+        it('should throw an error if name is not a string', function () {
+            expect(() => contextManager({}, 123)).to.throw(/name.*string/i);
+            expect(() => contextManager({}, true)).to.throw(/name.*string/i);
+            expect(() => contextManager({}, {})).to.throw(/name.*string/i);
         });
     });
 
@@ -131,6 +136,19 @@ describe('Context manager', function () {
                 expect(() => cman.register(obj2, true)).to.throw(/baz/i);
             });
         });
+        describe('registered', function () {
+            it('should be a function', function () {
+                expect(cman.registered).to.be.a('function');
+            });
+            it('should return true if the value supplied is registered', function () {
+                var obj = {}, obj2 = {};
+                obj[contextManager.ID] = 'baz';
+                cman.register(obj);
+                cman.register(obj2);
+                expect(cman.registered(obj)).to.equal(true);
+                expect(cman.registered(obj2)).to.equal(false);
+            });
+        });
         describe('deregister', function () {
             it('should be a function', function () {
                 expect(cman.deregister).to.be.a('function');
@@ -176,6 +194,16 @@ describe('Context manager', function () {
                 expect(cman.hasValue('baz')).to.equal(false);
                 expect(cman.hasValue('sub1')).to.equal(false);
                 expect(cman.hasValue('sub2')).to.equal(false);
+            });
+            it('should throw an error if an attempt is made to deregister an ID with the wrong object', function () {
+                const obj1 = {},
+                    obj2 = {};
+                obj1[contextManager.ID] = 'foo';
+                obj2[contextManager.ID] = 'foo';
+
+                cman.register(obj1);
+                expect(cman.registered(obj1)).to.equal(true);
+                expect(() => cman.deregister(obj2)).to.throw(/deregister.*incorrect/i);
             });
         });
         describe('update', function () {

@@ -16,9 +16,14 @@ describe('Double cache', function () {
             cache.set(a, b, 'foo');
             cache.set(a, c, 'bar');
             cache.set(b, c, 'baz');
+            cache.set(undefined, c, 'hello');
+            cache.set(b, null, 'world');
+            cache.set(c, false, 'hello world');
             expect(cache.get(a, b)).to.equal('foo');
             expect(cache.get(a, c)).to.equal('bar');
             expect(cache.get(b, c)).to.equal('baz');
+            expect(cache.get(undefined, c)).to.equal('hello');
+            expect(cache.get(c, false)).to.equal('hello world');
         });
         it('should return undefined if the supplied pair does not exist in the cache', function () {
             expect(cache.get(a, b)).to.equal(undefined);

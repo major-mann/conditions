@@ -30,7 +30,7 @@ module.exports.CHANGE = CHANGE;
 function create(obj, options, cache) {
     var res, i, events, preventCircularEvent = {};
     res = obj;
-    if (/*!isConfigObject(obj) &&*/obj && typeof obj === 'object') {
+    if (obj && typeof obj === 'object') {
         cache = cache || new WeakMap();
         if (cache.has(obj)) {
             return cache.get(obj);
@@ -54,7 +54,11 @@ function create(obj, options, cache) {
 
         if (Array.isArray(res)) {
             for (i = 0; i < obj.length; i++) {
-                res.push(create(res[i], options, cache));
+                if (expression.is(obj, i)) {
+                    res.push(expression.cloneArrayExpression(obj, i));
+                } else {
+                    res.push(create(obj[i], options, cache));
+                }
             }
         } else {
             Object.keys(obj).forEach(k => copy(obj, res, k, options, cache));
@@ -81,6 +85,7 @@ function create(obj, options, cache) {
     function addChildChangeEvent(obj, key, value) {
         if (typeof key === 'string') {
             events[key] = function onChildChange(name, value, old) {
+                /* istanbul ignore if */
                 if (preventCircularEvent[name]) {
                     return;
                 }
@@ -124,6 +129,7 @@ function create(obj, options, cache) {
             defineProperty
         };
         if (isArray) {
+            traps.get = arrGet;
             traps.set = arrSet;
         } else {
             traps.set = objSet;
@@ -181,6 +187,14 @@ function create(obj, options, cache) {
             }
         }
 
+        function arrGet(obj, name) {
+            if (typeof name !== 'symbol' && Number.isInteger(parseInt(name, 10)) && expression.is(obj, name)) {
+                return obj[name].get.call(obj);
+            } else {
+                return obj[name];
+            }
+        }
+
         function arrSet(obj, name, value) {
             // Handle the special case length extend, and pass along to the standard object set
             if (name === 'length' && value >= obj.length) {
@@ -188,7 +202,12 @@ function create(obj, options, cache) {
                 deliverArrayLength();
                 return true;
             }
-            return objSet(obj, name, value);
+            if (typeof name !== 'symbol' && Number.isInteger(parseInt(name, 10)) && expression.is(value)) {
+                obj[name] = value;
+                return true;
+            } else {
+                return objSet(obj, name, value);
+            }
         }
 
         function objSet(obj, name, value) {
@@ -300,8 +319,6 @@ function create(obj, options, cache) {
                 if (desc.value && typeof desc.value === 'object') {
                     // Pass any events from the child object to this object
                     addChildChangeEvent(obj, name, desc.value);
-                    // TODO: Shouldn't this go through the register function?
-                    // Register without allowing duplicates
                     obj[CONTEXT].register(desc.value, true);
                 }
             }
@@ -394,6 +411,7 @@ function initialize(obj, options) {
     } else {
         res = {};
     }
+    Object.setPrototypeOf(res, Object.getPrototypeOf(obj));
     if (options.contextManager) {
         cman = options.contextManager;
     } else {

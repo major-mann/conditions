@@ -9,7 +9,7 @@ describe('Resource loader', function () {
 
     beforeEach(function () {
         fsRes = '';
-        options = {};
+        options = { verbose: true };
         fs = {
             readFile: chai.spy(function (file, options, cb) {
                 fsArgs = Array.prototype.slice.call(arguments);
@@ -61,9 +61,6 @@ describe('Resource loader', function () {
             });
             rload.loaders.https = chai.spy(() => Promise.resolve(loadResult));
             rload.loaders.file = chai.spy(() => Promise.resolve(loadResult));
-        });
-        it('should throw an error if the first supplied URI is not absolute', function () {
-            expect(() => rload(['foo/bar'])).to.throw(/absolute/i);
         });
         it('should throw an error if the protocol supplied in the location is not found in the loaders', function () {
             expect(() => rload(['mycustom://foo/bar'])).to.throw(/mycustom/i);

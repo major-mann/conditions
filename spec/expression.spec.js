@@ -121,6 +121,15 @@ describe('Expression module', function () {
         });
     });
 
+    describe('cloneArrayExpression', function () {
+        it('should be a function', function () {
+            expect(expression.cloneArrayExpression).to.be.a('function');
+        });
+        it('should throw an error if the supplied value is not an expression', function () {
+            expect(() => expression.cloneArrayExpression([1,2,3], 1)).to.throw(/not.*expression/i);
+        });
+    });
+
     describe('clearOverride', function () {
         it('should be a function', function () {
             expect(expression.clearOverride).to.be.a('function');
@@ -134,16 +143,6 @@ describe('Expression module', function () {
             expect(obj.test).to.equal('hello');
             expression.clearOverride(obj, 'test');
             expect(obj.test).to.equal('foobarbaz');
-
-            /* obj = new Proxy([], {
-                get: function (target, name) {
-                    if (name === '0' && typeof target[name].get === 'function') {
-                        return target[name].get();
-                    } else {
-                        return target[name];
-                    }
-                }
-            });*/
             obj = [];
             expression.attach(obj, 0, function () { return 'foo' });
             expect(obj[0].get.call(obj)).to.equal('foo');
@@ -204,7 +203,7 @@ describe('Expression module', function () {
             expect(expression.is(obj, 'fake')).to.equal(false);
         });
         it('should return false if the supplied value is not an object', function () {
-            expect(expression.is('fake')).to.equal(false);
+            expect(expression.is('fake', 'foo')).to.equal(false);
         });
     });
 

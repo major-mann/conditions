@@ -43,7 +43,7 @@ function load(location, options) {
     if (Array.isArray(options.levels) && options.levels.every(l => typeof l === 'string')) {
         location = utils.explodeLevels(location, options.levels);
     }
-    return Promise.all(location.map(l => processLocation(base, l, true)))
+    return Promise.all(location.map(l => processLocation(base, l)))
         .then(processLevels);
 
     function processLevels(lvls) {
@@ -52,6 +52,7 @@ function load(location, options) {
         }
         if (lvls.length) {
             const opts = Object.assign({}, options);
+            /* istanbul ignore else */
             if (!opts.contextManager) {
                 opts.contextManager = configObject.context(lvls[0]);
             }
@@ -62,7 +63,7 @@ function load(location, options) {
     }
 
     /** Processes an individual location */
-    function processLocation(base, location, processLoadedData) {
+    function processLocation(base, location) {
         var loaderName, protocolLoader, parsed, protocol;
         if (!location) {
             return;
@@ -78,6 +79,7 @@ function load(location, options) {
         loaderName = protocol && protocol.substr(0, protocol.length - 1);
 
         // Get the loader.
+        /* istanbul ignore if */
         if (!loaderName) {
             throw new Error('No initial protocol has been set! You MUST set the first location with an absolute URI');
         }
@@ -88,12 +90,9 @@ function load(location, options) {
 
         setOverrides(base, parsed, protocolLoader.override);
         var res = protocolLoader(Object.assign({}, base), options);
-        if (processLoadedData) {
-            const formatted = formatLocation(base);
-            res = res.then(txt => processData(formatted, txt));
-        }
-        res = res.catch(onError);
-        return res;
+        const formatted = formatLocation(base);
+        return res.then(txt => processData(formatted, txt))
+            .catch(onError);
 
         function processData(location, configData) {
             var opts, ldr = defaultLoader;
@@ -109,7 +108,7 @@ function load(location, options) {
             /** The loader for imports. */
             function defaultLoader(location) {
                 const newBase = Object.assign({}, base);
-                return processLocation(newBase, location, true);
+                return processLocation(newBase, location);
             }
         }
 
@@ -122,7 +121,7 @@ function load(location, options) {
         }
 
         function onError(err) {
-            const loc = err.path || location;
+            const loc = err.path || /* istanbul ignore next */ location;
             console.warn('Unable to load configuration file from "%s". Skipping', loc);
             if (options.verbose) {
                 console.warn(err);
@@ -186,8 +185,10 @@ fsLoad.override = {
             return upath;
         }
         bpath = base.pathname;
+        /* istanbul ignore else */
         if (bpath) {
             bext = path.extname(bpath);
+            /* istanbul ignore else */
             if (bext) {
                 bpath = path.dirname(bpath, bext);
             }

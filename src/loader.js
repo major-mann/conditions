@@ -107,20 +107,20 @@ function process(str, loader, options) {
         processBlock(block);
 
         if (localImports.length) {
+            const liChain = chain(localImports);
             // Chain the imports so we can ensure leaf first
-            imports.push(chain(localImports));
+            imports.push(liChain);
         }
 
         return block;
 
         /** Chains together the list of functions (expecting promise returns) */
-        function chain(imports) {
-            var first = imports[0]();
-            imports = imports.slice(1);
-            for (let i = 0; i < imports.length; i++) {
-                first = first.then(() => imports[i]());
+        function chain(steps) {
+            var result = Promise.resolve();
+            for (let i = 0; i < steps.length; i++) {
+                result = result.then(() => steps[i]());
             }
-            return first;
+            return result;
         }
 
         /** Searches recursively for import calls to process. */
@@ -128,6 +128,7 @@ function process(str, loader, options) {
             var name, handler, func;
             if (block.type === 'CallExpression') {
                 name = block.callee.arguments[2] && block.callee.arguments[2].value;
+                /* istanbul ignore else */
                 if (importCache.hasOwnProperty(name)) {
                     const body = escodegen.generate({
                         type: 'ReturnStatement',
@@ -163,8 +164,10 @@ function process(str, loader, options) {
 
                 function combine(parts) {
                     parts = parts.filter(p => p !== undefined); // Clear any that could not be loaded
+                    /* istanbul ignore else */
                     if (parts.length) {
                         const opts = Object.assign({}, options);
+                        /* istanbul ignore else */
                         if (!opts.contextManager) {
                             opts.contextManager = configObject.context(config);
                         }
@@ -186,28 +189,11 @@ function process(str, loader, options) {
                 function processLoaderLocation(location) {
                     var prom = loader(location);
                     if (prom instanceof Promise !== true) {
-                        prom = Promise.resolve().then(() => prom);
+                        const result = prom;
+                        prom = Promise.resolve().then(() => result);
                     }
                     imports.push(prom);
                     return prom;
-                }
-
-                /**
-                 * Processes the return value from the loader.
-                 */
-                function processLoaderResult(location, data) {
-                    if (typeof data !== 'string') {
-                        return Promise.resolve(data);
-                    }
-                    const opts = {
-                        environment: options.environment,
-                        readOnly: options.readOnly,
-                        levels: options.levels,
-                        protectStructure: options.protectStructure,
-                        post: postProcessExpression,
-                        context: location
-                    };
-                    return process(data, loader, opts);
                 }
 
             }
