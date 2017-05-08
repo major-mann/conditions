@@ -46,8 +46,6 @@ const esprima = require('esprima'),
 *       * {boolean} protectStructure - True to make object, array and getters non configurable.
 *           Defaults to false.
 *       * {boolean}  readOnly - True to disable any setting of properties. Defaults to false.
-*       * {boolean} preferPrototype - Defaults to false. Whether to take preference of
-*           prototype properties over locals and environment.
 *       * {function} custom - A function to call that allows custom expressions functions
 *           to be constructed.
 *       * {function} post - A function to call that allows post processing to take place on expressions
