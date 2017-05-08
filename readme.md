@@ -54,8 +54,6 @@ a developer should be aware of.
 When assigning an object to a config object, a copy of that object (which itself is a config object) will end up
 being assigned to the object. i.e. `var bar = {}; configObj.foo = bar; configObj.foo === bar; // false`
 
-
-
 ## Configuration file format
 
     {
@@ -175,14 +173,9 @@ The following commands may be issues:
 These are the feature planned for version 2.
 
 * Resource saver
-* Rebuild of internals (In order to better facilitate resource saving, and move fully to an ES6 Proxy model)
-
-# Roadmap to V1.0.0
-
-* Work
-    * resource-loader mock (should be available directly through index.js)
-    * Ensure config file and locations are reported correctly on syntax errors.
-    * documentation
-* Systems
-    * travis CI
-    * codecov.io
+* Rebuild of internals
+    * Internal config object properties with additional information (on a per property basis)
+        * Source of property (file with line and column or dynamic)
+        * Base property value (Recursive model)
+        * Other?
+    * Full usage of Proxy model
