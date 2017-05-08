@@ -126,7 +126,7 @@ function process(str, loader, options) {
         /** Searches recursively for import calls to process. */
         function processBlock(block) {
             var name, handler, func;
-            if (block.type === 'CallExpression') {
+            if (block.type === 'CallExpression' && block.callee.arguments.length >= 3) {
                 name = block.callee.arguments[2] && block.callee.arguments[2].value;
                 /* istanbul ignore else */
                 if (importCache.hasOwnProperty(name)) {
