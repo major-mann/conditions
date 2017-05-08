@@ -47,9 +47,7 @@ function load(location, options) {
         .then(processLevels);
 
     function processLevels(lvls) {
-        while (!lvls[0] && lvls.length) {
-            lvls.shift();
-        }
+        lvls = lvls.filter(l => !!l);
         if (lvls.length) {
             const opts = Object.assign({}, options);
             /* istanbul ignore else */
