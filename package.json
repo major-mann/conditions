@@ -1,6 +1,6 @@
 {
   "name": "conditions",
-  "version": "0.9.95",
+  "version": "1.0.0",
   "description": "A javascript configuration engine",
   "keywords": [
     "configuration",
