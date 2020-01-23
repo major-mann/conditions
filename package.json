@@ -20,7 +20,8 @@
   "dependencies": {
     "escodegen": "^1.8.1",
     "esprima": "^3.0.0",
-    "mockery": "^2.0.0"
+    "mockery": "^2.0.0",
+    "request": "^2.88.0"
   },
   "devDependencies": {
     "chai": "^3.5.0",
